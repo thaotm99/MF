@@ -294,9 +294,9 @@ double GetBotFloatingProfit()
 // Lenh dang mo van duoc TrailingStop/CloseAllPositions quan ly binh thuong, chi OpenOrder() bi chan.
 bool DailyLimitReached(double &dailyPnl)
 {
-   dailyPnl = (GetTodayRealizedProfit() + GetBotFloatingProfit() ) * g_lotMultiplier;
-   if(dailyPnl <= -InpDailyMaxLoss) return true;
-   if(dailyPnl >= InpDailyMaxProfit) return true;
+   dailyPnl = (GetTodayRealizedProfit() + GetBotFloatingProfit() );
+   if(dailyPnl <= -InpDailyMaxLoss * g_lotMultiplier) return true;
+   if(dailyPnl >= InpDailyMaxProfit * g_lotMultiplier) return true;
    return false;
 }
 
@@ -335,8 +335,8 @@ double GetTimeWindowRealizedProfit()
 // Tu dong "reset" khi sang khung gio moi vi luon tinh lai theo khung gio hien tai, khong luu trang thai.
 bool TimeWindowLimitReached(double &windowPnl)
 {
-   windowPnl = (GetTimeWindowRealizedProfit() + GetBotFloatingProfit()) * g_lotMultiplier;
-   return (windowPnl > InpTimeWindowMaxProfit);
+   windowPnl = (GetTimeWindowRealizedProfit() + GetBotFloatingProfit());
+   return (windowPnl > InpTimeWindowMaxProfit * g_lotMultiplier);
 }
 
 //=============================================================================

@@ -22,7 +22,7 @@ input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong ma
 //=============================================================================
 // INPUTS (trailing stop)
 //=============================================================================
- double InpTrailDistance       = 10;  // Khoảng cách bám SL khi đã ở vùng dương
+ double InpTrailDistance       = 10;  // Mức lãi tối thiểu để kéo SL về entry (breakeven)
 input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
 input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
 
@@ -40,25 +40,16 @@ input double InpTakeProfitDistance = 50;  // Khoảng cách TP tính từ entry 
 // INPUTS (gioi han lai/lo trong ngay)
 //=============================================================================
 input double InpDailyMaxLoss   = 40;  // Lỗ tối đa trong ngày ($) - chạm mức này thì dừng vào lệnh mới
-input double InpDailyMaxProfit = 100;  // Lãi tối đa trong ngày ($) - chạm mức này thì dừng vào lệnh mới
+input double InpDailyMaxProfit = 200;  // Lãi tối đa trong ngày ($) - chạm mức này thì dừng vào lệnh mới
 
 //=============================================================================
 // INPUTS (gioi han lai theo khung gio: 00h-6h / 6h-12h / 12h-24h)
 //=============================================================================
-input double InpTimeWindowMaxProfit = 30;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
-
-//=============================================================================
-// INPUTS (RSI M1 - copy logic tinh tu rsi_dynamic_noti.mq5 (GetRsiMa): rsi va 2 duong SMA
-// cua rsi, GOI la "ma/ema" nhung ban chat la SMA (trung binh cong don gian), khong phai EMA that)
-//=============================================================================
-input int InpRsiPeriod = 9;   // RSI period (M1)
-input int InpMaFast    = 9;   // SMA nhanh cua RSI, "ema9" (M1)
-input int InpMaSlow    = 45;  // SMA cham cua RSI, "ema45" (M1)
+input double InpTimeWindowMaxProfit = 70;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
 
 //=============================================================================
 // GLOBALS
 //=============================================================================
-string   g_previousPosition = "NONE";
 double   g_tradeLotSize     = 0;
 double   g_lotMultiplier    =  1;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
 
@@ -67,7 +58,7 @@ datetime g_lastNotifyTime   = 0;
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1, g_hRsiM1;
+int g_hATR_M1, g_hADX_M1;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 //=============================================================================
@@ -84,19 +75,18 @@ int OnInit()
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   g_hRsiM1    = iRSI(_Symbol, PERIOD_M1, InpRsiPeriod, PRICE_CLOSE);
-
+   
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
    g_hCoralM30 = iCustom(_Symbol, PERIOD_M30, InpCoralIndicatorName, true, 14);
    g_hCoralH1  = iCustom(_Symbol, PERIOD_H1,  InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
-       Print("Failed to create ATR/ADX/RSI/Coral indicator handle(s) for ", _Symbol);
+       Print("Failed to create ATR/ADX/Coral indicator handle(s) for ", _Symbol);
       return INIT_FAILED;
    }
 
@@ -110,7 +100,6 @@ void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
    IndicatorRelease(g_hADX_M1);
-   IndicatorRelease(g_hRsiM1);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
    IndicatorRelease(g_hCoralM15);
@@ -217,15 +206,14 @@ void OnTick()
       if(!IsBotPosition()) continue;   // bo qua lenh thu cong / symbol khac
 
       TrailingStop(ticket);
-      g_previousPosition = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "LONG" : "SHORT";
    }
 }
 
 //=============================================================================
 // SIGNAL
 //=============================================================================
-// Đọc trend Coral trên M1/M5/M15: đóng lệnh ngược hướng khi Coral M1 đảo chiều, sau đó mở
-// lệnh mới khi cả 3 khung đồng thuận hướng VÀ RSI(M1) xác nhận theo đường SMA45 của RSI
+// Đọc trend Coral trên M1/M5/M15: thoát lệnh ngược hướng qua ExitPositionsOnReversal (M1 khi chưa
+// breakeven, M5 khi đã gồng lãi), sau đó mở lệnh mới khi cả 3 khung đồng thuận hướng
 int ProcessSignal(int shift)
 {
    bool upNow    = IsCoralUp(PERIOD_M1, shift);
@@ -237,20 +225,13 @@ int ProcessSignal(int shift)
    bool upM15    = IsCoralUp(PERIOD_M15, shift);
    bool downM15  = IsCoralDown(PERIOD_M15, shift);
 
-   bool reversedAgainstPosition = (g_previousPosition == "SHORT" && upNow) ||
-                                   (g_previousPosition == "LONG"  && downNow);
-   if(reversedAgainstPosition) CloseAllPositions();
+   ExitPositionsOnReversal(shift);
 
    Print("Coral trend snapshot - M1 up:", upNow, " M1 up(prev):", upPrev, " M5 up:", upM5, " M15 up:", upM15,
          " | M1 down:", downNow, " M1 down(prev):", downPrev, " M5 down:", downM5, " M15 down:", downM15);
 
-   double rsi, rsiMaFast, rsiMaSlow;
-   GetRsiSma(shift, rsi, rsiMaFast, rsiMaSlow);
-   Print("RSI(M1) snapshot - rsi=", DoubleToString(rsi, 2), " ema9=", DoubleToString(rsiMaFast, 2),
-         " ema45=", DoubleToString(rsiMaSlow, 2));
-
-   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15)   && (rsi > rsiMaSlow);
-   bool sellSignal = (downNow && !downPrev && downM5 && downM15) && (rsi < rsiMaSlow);
+   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15);
+   bool sellSignal = (downNow && !downPrev && downM5 && downM15);
 
    if(buySignal)  OpenOrder((int)POSITION_TYPE_BUY,  shift);
    if(sellSignal) OpenOrder((int)POSITION_TYPE_SELL, shift);
@@ -306,7 +287,7 @@ double GetBotFloatingProfit()
 
 // Kiem tra da cham nguong dung vao lenh moi trong ngay chua: lo >= InpDailyMaxLoss hoac lai >= InpDailyMaxProfit.
 // dailyPnl (tra ra ngoai) = tong P/L da chot + dang mo cua bot trong ngay server hien tai.
-// Lenh dang mo van duoc TrailingStop/CloseAllPositions quan ly binh thuong, chi OpenOrder() bi chan.
+// Lenh dang mo van duoc TrailingStop/ExitPositionsOnReversal quan ly binh thuong, chi OpenOrder() bi chan.
 bool DailyLimitReached(double &dailyPnl)
 {
    dailyPnl = (GetTodayRealizedProfit() + GetBotFloatingProfit() );
@@ -437,7 +418,6 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(atr, 2)));
    }
 
-   g_previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2));
 }
@@ -451,8 +431,20 @@ bool StopsLevelOk(bool isBuy, double newSL, double bidNow, double askNow, double
    return isBuy ? (bidNow - newSL >= minStop) : (newSL - askNow >= minStop);
 }
 
-// Trail SL cho 1 lệnh của bot: giai đoạn 1 kéo SL về entry (breakeven) khi lãi đủ InpTrailDistance,
-// giai đoạn 2 tiếp tục bám SL cách giá hiện tại InpTrailDistance khi SL đã >= entry
+// Lenh dang chon da duoc keo SL ve entry (breakeven) hay chua - tuc rui ro da ve 0 va
+// dang o che do gong lai. Goi sau khi da PositionSelect / PositionSelectByTicket.
+bool IsPositionAtBreakeven()
+{
+   double sl    = PositionGetDouble(POSITION_SL);
+   double entry = PositionGetDouble(POSITION_PRICE_OPEN);
+   bool   isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+
+   if(sl == 0) return false;   // chua co SL -> chac chan chua breakeven
+   return isBuy ? (sl >= entry) : (sl <= entry);
+}
+
+// Trail SL cho 1 lệnh của bot: chỉ kéo SL về entry (breakeven) khi lãi đủ InpTrailDistance,
+// sau đó giữ nguyên SL ở entry, không bám theo InpTrailDistance nữa
 void TrailingStop(ulong ticket)
 {
    if(!PositionSelectByTicket(ticket)) return;
@@ -471,62 +463,44 @@ void TrailingStop(ulong ticket)
    double minStop = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
 
    double profitDist = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
-   bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
+   bool   slAtOrAboveEntry = IsPositionAtBreakeven();
 
    Print("TrailingStop #", ticket, " ", (isBuy ? "BUY" : "SELL"),
          ": entry=", DoubleToString(entryPrice, digits), " sl=", DoubleToString(sl, digits),
          " price=", DoubleToString(price, digits), " profitDist=", DoubleToString(profitDist, digits),
          " slAtOrAboveEntry=", slAtOrAboveEntry);
 
-   double newSL = 0;
-
-   // ----- GIAI DOAN 2: SL da >= entry -> trail theo 10 gia -----
+   // ----- SL da o entry (hoac tot hon) -> khong lam gi them -----
    if(slAtOrAboveEntry)
    {
-      newSL = isBuy ? NormalizeDouble(price - InpTrailDistance, digits)
-                    : NormalizeDouble(price + InpTrailDistance, digits);
-      Print("TrailingStop #", ticket, ": phase 2 (trail) -> candidate newSL=", DoubleToString(newSL, digits));
-
-      // chi doi SL theo huong co loi
-      bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
-                                 : (newSL >= NormalizeDouble(sl, digits));
-      if(worseOrEqual)
-      {
-         Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
-         return;
-      }
-
-      if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
-      {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
-         return;
-      }
+      Print("TrailingStop #", ticket, ": SL da o entry (breakeven), khong trail them");
+      return;
    }
-   // ----- GIAI DOAN 1: lai >= 10 gia -> keo SL ve entry (breakeven) -----
-   else if(profitDist >= InpTrailDistance)
-   {
-      newSL = NormalizeDouble(entryPrice, digits);
-      Print("TrailingStop #", ticket, ": phase 1 (breakeven) -> candidate newSL=", DoubleToString(newSL, digits));
 
-      // SL moi phai tot hon SL hien tai
-      bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
-                                 : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
-      if(worseOrEqual)
-      {
-         Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
-         return;
-      }
-
-      if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
-      {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
-         return;
-      }
-   }
-   else
+   // ----- Chua du lai -> bo qua -----
+   if(profitDist < InpTrailDistance)
    {
       Print("TrailingStop #", ticket, ": not enough profit yet, skip (profitDist < InpTrailDistance)");
-      return; // chua du dieu kien
+      return;
+   }
+
+   // ----- Keo SL ve entry (breakeven) -----
+   double newSL = NormalizeDouble(entryPrice, digits);
+   Print("TrailingStop #", ticket, ": breakeven -> candidate newSL=", DoubleToString(newSL, digits));
+
+   // SL moi phai tot hon SL hien tai
+   bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
+                              : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
+   if(worseOrEqual)
+   {
+      Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
+      return;
+   }
+
+   if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
+   {
+      Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
+      return;
    }
 
    if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
@@ -566,7 +540,60 @@ double CalcOrderVolume(bool isBuy)
    return g_tradeLotSize * g_lotMultiplier;
 }
 
-// Đóng tất cả lệnh đang mở của bot (theo magic number), giữ nguyên lệnh thủ công
+// Thoát lệnh khi Coral đảo chiều ngược hướng lệnh. Khung thời gian dùng để xét đảo chiều
+// phụ thuộc trạng thái của TỪNG lệnh:
+//   - Lệnh CHƯA breakeven (SL chưa về entry): xét Coral M1 -> thoát nhanh, cắt lỗ sớm.
+//   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, chỉ thoát khi Coral M5 đảo
+//     chiều. M5 chậm hơn M1 nên lệnh không bị đá ra bởi nhiễu ngắn hạn; xấu nhất là SL ở
+//     entry ăn trước, hòa vốn.
+void ExitPositionsOnReversal(int shift)
+{
+   bool upM1   = IsCoralUp(PERIOD_M1, shift);
+   bool downM1 = IsCoralDown(PERIOD_M1, shift);
+   bool upM5   = IsCoralUp(PERIOD_M5, shift);
+   bool downM5 = IsCoralDown(PERIOD_M5, shift);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(!IsBotPosition()) continue;   // chi thoat lenh cua bot, giu nguyen lenh thu cong
+
+      bool   isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      bool   atBreakeven = IsPositionAtBreakeven();
+      string tfName      = atBreakeven ? "M5" : "M1";
+      // doc truoc khi close - sau khi close position khong con select duoc nua
+      double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
+      double slNow       = PositionGetDouble(POSITION_SL);
+
+      // da breakeven -> gong lai, chi nghe M5; chua breakeven -> giu hanh vi cu (M1)
+      bool reversed = atBreakeven ? (isBuy ? downM5 : upM5)
+                                  : (isBuy ? downM1 : upM1);
+
+      Print("ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
+            ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
+            ", reversed=", reversed);
+
+      if(!reversed) continue;
+
+      if(!trade.PositionClose(ticket))
+      {
+         Print("ExitPositionsOnReversal #", ticket, ": close failed, error code: ", GetLastError());
+         ResetLastError();
+         continue;
+      }
+
+      Print("ExitPositionsOnReversal #", ticket, ": closed - Coral ", tfName, " dao chieu");
+      SendTelegram(TelegramMsg("Exit " + (isBuy ? "BUY" : "SELL") + " - Coral " + tfName + " dao chieu",
+         DoubleToString(entryPrice, 2), DoubleToString(slNow, 2),
+         (atBreakeven ? "gong lai" : "chua breakeven"), "-", "-"));
+   }
+}
+
+// Đóng tất cả lệnh đang mở của bot (theo magic number), giữ nguyên lệnh thủ công.
+// Hiện KHÔNG còn được gọi trong luồng chính (thoát lệnh đã chuyển sang ExitPositionsOnReversal),
+// giữ lại như tiện ích đóng khẩn cấp toàn bộ lệnh bot.
 void CloseAllPositions()
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -614,35 +641,6 @@ bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasVa
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
 
 //=============================================================================
-// RSI + SMA(RSI) HELPERS (M1) - copy logic tinh tu GetRsiMa trong rsi_dynamic_noti.mq5.
-// Duoc goi la "ma/ema9" va "ma/ema45" nhung ban chat la SMA (trung binh cong don gian
-// cua chuoi RSI), KHONG phai EMA that.
-//=============================================================================
-// Lay RSI va 2 duong SMA (nhanh=InpMaFast, cham=InpMaSlow) cua RSI tai 1 shift, khung M1
-void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
-{
-   int need = InpMaSlow + shift + 5;
-
-   double rsiBuf[];
-   ArraySetAsSeries(rsiBuf, true);
-   if(CopyBuffer(g_hRsiM1, 0, 0, need, rsiBuf) <= 0)
-   {
-      rsi = 0; maFast = 0; maSlow = 0;
-      return;
-   }
-
-   rsi = rsiBuf[shift];
-
-   double sumF = 0;
-   for(int i = shift; i < shift + InpMaFast; i++) sumF += rsiBuf[i];
-   maFast = sumF / InpMaFast;
-
-   double sumS = 0;
-   for(int j = shift; j < shift + InpMaSlow; j++) sumS += rsiBuf[j];
-   maSlow = sumS / InpMaSlow;
-}
-
-//=============================================================================
 // Ý TƯỞNG CHIẾN LƯỢC CỦA BOT (tổng quan)
 //=============================================================================
 // 1. Tín hiệu: đọc trend chỉ báo Coral trên 3 khung M1 (chính) / M5 / M15 (xác nhận).
@@ -651,25 +649,29 @@ void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
 //    -> Mục đích: chỉ vào lệnh đúng lúc M1 mới đổi chiều, nhưng phải được 2 khung lớn hơn
 //       xác nhận cùng hướng, tránh vào lệnh ngược trend chính.
 //
-// 1b. Bộ lọc RSI(M1) (GetRsiSma, copy logic từ rsi_dynamic_noti.mq5): tính RSI(InpRsiPeriod
-//    =9) và 2 đường SMA của RSI - "ema9" (InpMaFast) và "ema45" (InpMaSlow), thực chất là
-//    SMA chứ không phải EMA thật. Điều kiện BUY cần thêm rsi > ema45, SELL cần rsi < ema45
-//    (bổ sung AND với điều kiện Coral ở mục 1, không thay thế).
-//
-// 2. Đảo chiều vị thế: nếu đang giữ lệnh ngược với trend Coral M1 mới (vd đang SHORT mà
-//    M1 chuyển Up), đóng toàn bộ lệnh của bot trước (xem reversedAgainstPosition trong
-//    ProcessSignal) để tránh giữ lệnh sai hướng khi thị trường đã đảo chiều.
+// 2. Thoát lệnh khi đảo chiều - GỒNG LÃI (ExitPositionsOnReversal, gọi đầu ProcessSignal): xét
+//    riêng từng lệnh, khung thời gian dùng để nhận tín hiệu đảo chiều phụ thuộc lệnh đó
+//    đã breakeven hay chưa (IsPositionAtBreakeven - SL đã được kéo về entry chưa):
+//      - CHƯA breakeven (còn đang rủi ro): xét Coral M1. M1 đảo ngược hướng lệnh là đóng
+//        ngay -> thoát nhanh, cắt lỗ sớm, giữ nguyên hành vi cũ.
+//      - ĐÃ breakeven (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, BỎ QUA tín hiệu đảo
+//        chiều M1, chỉ đóng khi Coral M5 đảo ngược hướng lệnh. M5 chậm hơn nên lệnh không
+//        bị nhiễu M1 đá ra sớm, để lãi chạy tiếp; nếu giá quay đầu thật thì xấu nhất là
+//        chạm SL ở entry -> hòa vốn.
+//    Lưu ý: tín hiệu đảo chiều đọc ở shift=1 (nến đã đóng) trên cả M1 lẫn M5, tránh
+//    repaint; nhưng vì hàm chỉ chạy khi có nến M1 mới, tín hiệu M5 được kiểm tra lại mỗi
+//    phút chứ không phải chỉ mỗi 5 phút.
 //
 // 3. Stop loss, take profit & lọc tín hiệu (OpenOrder): SL đặt theo điểm swing gần nhất
 //    (14 nến M1), nếu khoảng cách SL quá xa thì cap lại bằng InpSlSpacingDistance. TP đặt
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
 //
-// 4. Trailing stop 2 giai đoạn (TrailingStop):
-//      - Giai đoạn 1 (breakeven): khi lãi >= InpTrailDistance, kéo SL về đúng giá entry.
-//      - Giai đoạn 2 (trail): khi SL đã ở mức entry trở lên, tiếp tục bám SL cách giá
-//        hiện tại InpTrailDistance, chỉ đổi theo hướng có lợi và luôn kiểm tra stops
-//        level tối thiểu của broker (StopsLevelOk) trước khi gửi lệnh sửa SL.
+// 4. Trailing stop chỉ 1 giai đoạn - breakeven (TrailingStop):
+//      - Khi lãi >= InpTrailDistance, kéo SL về đúng giá entry (chỉ đổi theo hướng có lợi
+//        và luôn kiểm tra stops level tối thiểu của broker - StopsLevelOk - trước khi
+//        gửi lệnh sửa SL).
+//      - Khi SL đã ở mức entry trở lên thì dừng, KHÔNG bám SL theo InpTrailDistance nữa.
 //
 // 5. Volume: cố định = min lot của symbol nhân hệ số g_lotMultiplier (CalcOrderVolume),
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
@@ -689,14 +691,14 @@ void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
 //
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
-//    ($40) hoặc lãi >= InpDailyMaxProfit ($100), bot NGỪNG mở lệnh mới cho đến hết ngày.
-//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được TrailingStop/CloseAllPositions quản
+//    ($40) hoặc lãi >= InpDailyMaxProfit ($200), bot NGỪNG mở lệnh mới cho đến hết ngày.
+//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được TrailingStop/ExitPositionsOnReversal quản
 //    lý bình thường, chỉ đường mở lệnh mới (OpenOrder) bị chặn.
 //
 // 9. Giới hạn lãi theo khung giờ (TimeWindowLimitReached, gọi trong OpenOrder, bổ sung
 //    song song với mục 8 - không thay thế): 1 ngày chia làm 3 khung giờ server 00h-6h /
 //    6h-12h / 12h-24h (GetTimeWindowIndex). Trong mỗi khung, nếu P/L (đã chốt trong khung
-//    + đang mở) > InpTimeWindowMaxProfit ($30), bot NGỪNG mở lệnh mới đến khi sang khung
+//    + đang mở) > InpTimeWindowMaxProfit ($50), bot NGỪNG mở lệnh mới đến khi sang khung
 //    giờ kế tiếp. Vì luôn tính lại theo khung giờ hiện tại (không lưu trạng thái), ngưỡng
 //    tự động "reset" khi giờ server bước sang khung mới. Lệnh đang mở không bị đóng.
 //=============================================================================
