@@ -1,8 +1,6 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// delete trailing stop, close after m1-14
-
 // Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) -
 // dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition, KHONG thay the
 #define BOT_COMMENT_PREFIX "ATR : "
@@ -369,7 +367,7 @@ void OpenOrder(int orderType, int shift)
       return;
    }
 
-   // Volume theo chuyen huong (3 lenh dau sau chuyen huong -> vol x2)
+   // Volume co dinh (min lot * g_lotMultiplier), khong tang theo chuoi lenh cung huong
    double orderVol   = CalcOrderVolume(isBuy);
 
    int lowIdx  = iLowest(_Symbol,  PERIOD_M1, MODE_LOW,  14, 1);

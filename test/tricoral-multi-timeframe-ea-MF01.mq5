@@ -1,8 +1,6 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// delete trailing stop, close after m1-14
-
 // Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) -
 // dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition, KHONG thay the
 #define BOT_COMMENT_PREFIX "ATR : "
@@ -48,14 +46,6 @@ input double InpDailyMaxProfit = 100;  // Lãi tối đa trong ngày ($) - chạ
 input double InpTimeWindowMaxProfit = 30;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
 
 //=============================================================================
-// INPUTS (RSI M1 - copy logic tinh tu rsi_dynamic_noti.mq5 (GetRsiMa): rsi va 2 duong SMA
-// cua rsi, GOI la "ma/ema" nhung ban chat la SMA (trung binh cong don gian), khong phai EMA that)
-//=============================================================================
-input int InpRsiPeriod = 9;   // RSI period (M1)
-input int InpMaFast    = 9;   // SMA nhanh cua RSI, "ema9" (M1)
-input int InpMaSlow    = 45;  // SMA cham cua RSI, "ema45" (M1)
-
-//=============================================================================
 // GLOBALS
 //=============================================================================
 string   g_previousPosition = "NONE";
@@ -67,7 +57,7 @@ datetime g_lastNotifyTime   = 0;
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1, g_hRsiM1;
+int g_hATR_M1, g_hADX_M1;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 //=============================================================================
@@ -84,19 +74,18 @@ int OnInit()
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   g_hRsiM1    = iRSI(_Symbol, PERIOD_M1, InpRsiPeriod, PRICE_CLOSE);
-
+   
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
    g_hCoralM30 = iCustom(_Symbol, PERIOD_M30, InpCoralIndicatorName, true, 14);
    g_hCoralH1  = iCustom(_Symbol, PERIOD_H1,  InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
-       Print("Failed to create ATR/ADX/RSI/Coral indicator handle(s) for ", _Symbol);
+       Print("Failed to create ATR/ADX/Coral indicator handle(s) for ", _Symbol);
       return INIT_FAILED;
    }
 
@@ -110,7 +99,6 @@ void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
    IndicatorRelease(g_hADX_M1);
-   IndicatorRelease(g_hRsiM1);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
    IndicatorRelease(g_hCoralM15);
@@ -224,8 +212,8 @@ void OnTick()
 //=============================================================================
 // SIGNAL
 //=============================================================================
-// Đọc trend Coral trên M1/M5/M15: đóng lệnh ngược hướng khi Coral M1 đảo chiều, sau đó mở
-// lệnh mới khi cả 3 khung đồng thuận hướng VÀ RSI(M1) xác nhận theo đường SMA45 của RSI
+// Đọc trend Coral trên M1/M5/M15: đóng lệnh ngược hướng khi Coral M1 đảo chiều,
+// sau đó mở lệnh mới khi cả 3 khung đồng thuận hướng (buy/sell signal)
 int ProcessSignal(int shift)
 {
    bool upNow    = IsCoralUp(PERIOD_M1, shift);
@@ -244,13 +232,8 @@ int ProcessSignal(int shift)
    Print("Coral trend snapshot - M1 up:", upNow, " M1 up(prev):", upPrev, " M5 up:", upM5, " M15 up:", upM15,
          " | M1 down:", downNow, " M1 down(prev):", downPrev, " M5 down:", downM5, " M15 down:", downM15);
 
-   double rsi, rsiMaFast, rsiMaSlow;
-   GetRsiSma(shift, rsi, rsiMaFast, rsiMaSlow);
-   Print("RSI(M1) snapshot - rsi=", DoubleToString(rsi, 2), " ema9=", DoubleToString(rsiMaFast, 2),
-         " ema45=", DoubleToString(rsiMaSlow, 2));
-
-   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15)   && (rsi > rsiMaSlow);
-   bool sellSignal = (downNow && !downPrev && downM5 && downM15) && (rsi < rsiMaSlow);
+   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15);
+   bool sellSignal = (downNow && !downPrev && downM5 && downM15);
 
    if(buySignal)  OpenOrder((int)POSITION_TYPE_BUY,  shift);
    if(sellSignal) OpenOrder((int)POSITION_TYPE_SELL, shift);
@@ -384,7 +367,7 @@ void OpenOrder(int orderType, int shift)
       return;
    }
 
-   // Volume theo chuyen huong (3 lenh dau sau chuyen huong -> vol x2)
+   // Volume co dinh (min lot * g_lotMultiplier), khong tang theo chuoi lenh cung huong
    double orderVol   = CalcOrderVolume(isBuy);
 
    int lowIdx  = iLowest(_Symbol,  PERIOD_M1, MODE_LOW,  14, 1);
@@ -614,35 +597,6 @@ bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasVa
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
 
 //=============================================================================
-// RSI + SMA(RSI) HELPERS (M1) - copy logic tinh tu GetRsiMa trong rsi_dynamic_noti.mq5.
-// Duoc goi la "ma/ema9" va "ma/ema45" nhung ban chat la SMA (trung binh cong don gian
-// cua chuoi RSI), KHONG phai EMA that.
-//=============================================================================
-// Lay RSI va 2 duong SMA (nhanh=InpMaFast, cham=InpMaSlow) cua RSI tai 1 shift, khung M1
-void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
-{
-   int need = InpMaSlow + shift + 5;
-
-   double rsiBuf[];
-   ArraySetAsSeries(rsiBuf, true);
-   if(CopyBuffer(g_hRsiM1, 0, 0, need, rsiBuf) <= 0)
-   {
-      rsi = 0; maFast = 0; maSlow = 0;
-      return;
-   }
-
-   rsi = rsiBuf[shift];
-
-   double sumF = 0;
-   for(int i = shift; i < shift + InpMaFast; i++) sumF += rsiBuf[i];
-   maFast = sumF / InpMaFast;
-
-   double sumS = 0;
-   for(int j = shift; j < shift + InpMaSlow; j++) sumS += rsiBuf[j];
-   maSlow = sumS / InpMaSlow;
-}
-
-//=============================================================================
 // Ý TƯỞNG CHIẾN LƯỢC CỦA BOT (tổng quan)
 //=============================================================================
 // 1. Tín hiệu: đọc trend chỉ báo Coral trên 3 khung M1 (chính) / M5 / M15 (xác nhận).
@@ -650,11 +604,6 @@ void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
 //    VÀ cả M5, M15 cũng đang uptrend đồng thuận. Tương tự cho SELL với downtrend.
 //    -> Mục đích: chỉ vào lệnh đúng lúc M1 mới đổi chiều, nhưng phải được 2 khung lớn hơn
 //       xác nhận cùng hướng, tránh vào lệnh ngược trend chính.
-//
-// 1b. Bộ lọc RSI(M1) (GetRsiSma, copy logic từ rsi_dynamic_noti.mq5): tính RSI(InpRsiPeriod
-//    =9) và 2 đường SMA của RSI - "ema9" (InpMaFast) và "ema45" (InpMaSlow), thực chất là
-//    SMA chứ không phải EMA thật. Điều kiện BUY cần thêm rsi > ema45, SELL cần rsi < ema45
-//    (bổ sung AND với điều kiện Coral ở mục 1, không thay thế).
 //
 // 2. Đảo chiều vị thế: nếu đang giữ lệnh ngược với trend Coral M1 mới (vd đang SHORT mà
 //    M1 chuyển Up), đóng toàn bộ lệnh của bot trước (xem reversedAgainstPosition trong
