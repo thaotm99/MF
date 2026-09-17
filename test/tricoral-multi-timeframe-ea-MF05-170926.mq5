@@ -1,9 +1,10 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) -
-// dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition, KHONG thay the
-#define BOT_COMMENT_PREFIX "ATR : "
+// Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) - la ma
+// chien luoc, dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition,
+// KHONG thay the. Comment day du dang "MF_05, ATR: x.x, erK: x.xx, er: x.xx" (xem OpenOrder)
+#define BOT_COMMENT_PREFIX "MF_05"
 
 //=============================================================================
 // INPUTS
@@ -44,6 +45,15 @@ input double InpDailyMaxProfit = 100;  // Lãi tối đa trong ngày ($) - chạ
 // INPUTS (gioi han lai theo khung gio: 00h-6h / 6h-12h / 12h-24h)
 //=============================================================================
 input double InpTimeWindowMaxProfit = 30;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
+
+//=============================================================================
+// INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, chi de
+// tinh/hien thi/gui Telegram + ghi vao comment lenh, CHUA dung de loc tin hieu vao lenh)
+//=============================================================================
+input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency Ratio
+input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
+input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
+input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
 
 //=============================================================================
 // GLOBALS
@@ -397,7 +407,12 @@ void OpenOrder(int orderType, int shift)
    // TP co dinh cach entry InpTakeProfitDistance gia: BUY cong them, SELL tru di
    double tp = isBuy ? entryPrice + InpTakeProfitDistance : entryPrice - InpTakeProfitDistance;
 
-   string orderComment = BOT_COMMENT_PREFIX + DoubleToString(atr, 1);
+   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   string erKStr = DoubleToString(erK, 2);
+   string erStr  = DoubleToString(er, 2);
+
+   string orderComment = BOT_COMMENT_PREFIX + ", ATR: " + DoubleToString(atr, 1) + ", erK: " + erKStr + ", er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -407,7 +422,7 @@ void OpenOrder(int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
       return;
    }
 
@@ -417,12 +432,13 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
    }
 
    g_previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
-         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2));
+         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
+         ", erK: ", erKStr, ", er: ", erStr);
 }
 
 //=============================================================================
@@ -641,6 +657,50 @@ bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasVa
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
 
 //=============================================================================
+// EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
+// voi tong quang duong di cua gia (path) trong "period" nen gan nhat. ER cang gan 1 nghia
+// la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
+//=============================================================================
+// Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15)
+double EfficiencyRatio(ENUM_TIMEFRAMES tf, int period, int shift)
+{
+   double c[];
+   ArraySetAsSeries(c, true);
+   if(CopyClose(_Symbol, tf, shift, period + 1, c) < period + 1) return -1.0;
+   double disp = MathAbs(c[0] - c[period]);
+   double path = 0.0;
+   for(int i = 0; i < period; i++) path += MathAbs(c[i] - c[i + 1]);
+   return (path > 0.0) ? disp / path : 0.0;
+}
+
+// Xep hang ER hien tai (shift=1) so voi "lookback" gia tri ER cua cac cua so truot qua khu
+// tren cung khung thoi gian: tra ve ty le cac gia tri ER qua khu THAP HON ER hien tai (0..1).
+// ERRank cang cao nghia la ER hien tai dang "hieu qua"/trending hon phan lon lich su gan day.
+// Tra ve -1.0 neu khong du du lieu (chua dung de loc tin hieu, chi de bao cao).
+double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
+{
+   double cur = EfficiencyRatio(tf, period, 1);
+   if(cur < 0) return -1.0;
+
+   double c[];
+   ArraySetAsSeries(c, true);
+   int need = lookback + period + 2;
+   if(CopyClose(_Symbol, tf, 0, need, c) < need) return -1.0;
+
+   int below = 0, valid = 0;
+   for(int s = 1; s <= lookback; s++)
+   {
+      double disp = MathAbs(c[s] - c[s + period]);
+      double path = 0.0;
+      for(int i = s; i < s + period; i++) path += MathAbs(c[i] - c[i + 1]);
+      if(path <= 0.0) continue;
+      valid++;
+      if(disp / path < cur) below++;
+   }
+   return (valid > 0) ? (double)below / valid : -1.0;
+}
+
+//=============================================================================
 // Ý TƯỞNG CHIẾN LƯỢC CỦA BOT (tổng quan)
 //=============================================================================
 // 1. Tín hiệu: đọc trend chỉ báo Coral trên 3 khung M1 (chính) / M5 / M15 (xác nhận).
@@ -671,8 +731,10 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
 //
 // 6. Phân tách lệnh bot / lệnh thủ công: mọi lệnh bot mở đều được gán InpMagicNumber
-//    (trade.SetExpertMagicNumber trong OnInit). Mọi thao tác trail/đóng lệnh đều đi qua
-//    IsBotPosition() để chỉ đụng tới lệnh có magic này, không đụng vào lệnh thủ công.
+//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_05, ATR: x.x, erK: x.xx,
+//    er: x.xx" (BOT_COMMENT_PREFIX = "MF_05", xem OpenOrder). Mọi thao tác trail/đóng lệnh
+//    đều đi qua IsBotPosition() để chỉ đụng tới lệnh có magic này VÀ comment bắt đầu bằng
+//    "MF_05", không đụng vào lệnh thủ công.
 //    LƯU Ý quan trọng: cơ chế này chỉ đáng tin cậy trên tài khoản HEDGING. Trên tài
 //    khoản NETTING, MT5 chỉ cho 1 position/symbol - nếu bot gửi lệnh (Buy/Sell) trong
 //    lúc đang có lệnh thủ công trên cùng symbol, MT5 sẽ tự động gộp/netting 2 lệnh đó
@@ -680,8 +742,8 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    thêm bước kiểm tra "có lệnh không phải của bot đang mở trên symbol" trước khi gọi
 //    trade.Buy/trade.Sell trong OpenOrder() để tránh rủi ro này trên tài khoản netting.
 //
-// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại, trail SL, tín hiệu
-//    bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
+// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm erK/er, trail SL,
+//    tín hiệu bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
 //
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
@@ -695,5 +757,13 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    + đang mở) > InpTimeWindowMaxProfit ($30), bot NGỪNG mở lệnh mới đến khi sang khung
 //    giờ kế tiếp. Vì luôn tính lại theo khung giờ hiện tại (không lưu trạng thái), ngưỡng
 //    tự động "reset" khi giờ server bước sang khung mới. Lệnh đang mở không bị đóng.
+//
+// 10. Efficiency Ratio (gọi trong OpenOrder): đo "độ hiệu quả" của xu hướng giá trên khung
+//     InpERtf (mặc định M5, độc lập với Coral M1/M5/M15). Ghi 2 giá trị, làm tròn 2 chữ số
+//     thập phân:
+//       - er  (EfficiencyRatio): ER hiện tại tại shift=1.
+//       - erK (ERRank): xếp hạng ER hiện tại so với InpERLookback (300) giá trị ER quá khứ.
+//     Hiện CHỈ để báo cáo (ghi vào comment lệnh + gửi Telegram khi mở lệnh), CHƯA dùng để
+//     lọc tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
 //=============================================================================
 

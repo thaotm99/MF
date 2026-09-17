@@ -26,6 +26,16 @@ input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them 
 input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing (dung chung moi chien luoc)
 
 //=============================================================================
+// INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, dung chung
+// ca 5 chien luoc; chi de tinh/hien thi/gui Telegram + ghi vao comment lenh, CHUA dung de
+// loc tin hieu vao lenh)
+//=============================================================================
+input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency Ratio
+input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
+input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
+input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
+
+//=============================================================================
 // MF_01 - Coral 3TF thuan, dong het lenh bot khi M1 dao chieu, trailing 2 giai doan
 //=============================================================================
 input group "=== MF_01 ==="
@@ -410,6 +420,51 @@ bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasVa
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
 
 //=============================================================================
+// EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
+// voi tong quang duong di cua gia (path) trong "period" nen gan nhat. ER cang gan 1 nghia
+// la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
+// Dung chung ca 5 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
+//=============================================================================
+// Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15)
+double EfficiencyRatio(ENUM_TIMEFRAMES tf, int period, int shift)
+{
+   double c[];
+   ArraySetAsSeries(c, true);
+   if(CopyClose(_Symbol, tf, shift, period + 1, c) < period + 1) return -1.0;
+   double disp = MathAbs(c[0] - c[period]);
+   double path = 0.0;
+   for(int i = 0; i < period; i++) path += MathAbs(c[i] - c[i + 1]);
+   return (path > 0.0) ? disp / path : 0.0;
+}
+
+// Xep hang ER hien tai (shift=1) so voi "lookback" gia tri ER cua cac cua so truot qua khu
+// tren cung khung thoi gian: tra ve ty le cac gia tri ER qua khu THAP HON ER hien tai (0..1).
+// ERRank cang cao nghia la ER hien tai dang "hieu qua"/trending hon phan lon lich su gan day.
+// Tra ve -1.0 neu khong du du lieu (chua dung de loc tin hieu, chi de bao cao).
+double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
+{
+   double cur = EfficiencyRatio(tf, period, 1);
+   if(cur < 0) return -1.0;
+
+   double c[];
+   ArraySetAsSeries(c, true);
+   int need = lookback + period + 2;
+   if(CopyClose(_Symbol, tf, 0, need, c) < need) return -1.0;
+
+   int below = 0, valid = 0;
+   for(int s = 1; s <= lookback; s++)
+   {
+      double disp = MathAbs(c[s] - c[s + period]);
+      double path = 0.0;
+      for(int i = s; i < s + period; i++) path += MathAbs(c[i] - c[i + 1]);
+      if(path <= 0.0) continue;
+      valid++;
+      if(disp / path < cur) below++;
+   }
+   return (valid > 0) ? (double)below / valid : -1.0;
+}
+
+//=============================================================================
 // RSI + SMA(RSI) HELPERS (M1) - chi dung cho chien luoc co useRsiFilter=true (MF_02).
 // Goi la "ma/ema9" va "ma/ema45" nhung ban chat la SMA (trung binh cong don gian cua
 // chuoi RSI), KHONG phai EMA that. Copy logic tu GetRsiMa trong rsi_dynamic_noti.mq5.
@@ -614,7 +669,8 @@ double CalcOrderVolume(int s)
 //=============================================================================
 // Mo lenh buy/sell cho chien luoc s: tinh SL theo swing gan nhat (cap boi slSpacingDistance),
 // bo qua neu ATR qua thap, da cham gioi han lai/lo trong ngay, hoac gioi han lai trong khung gio;
-// gui thong bao Telegram cho ca truong hop thanh cong lan that bai. Comment lenh gan prefix ma chien luoc.
+// gui thong bao Telegram (kem ER) cho ca truong hop thanh cong lan that bai. Comment lenh dang
+// "MF_xx, ATR: x.x, erK: x.xx, er: x.xx" (ma chien luoc + ATR + ERRank + EfficiencyRatio).
 void OpenOrder(int s, int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
@@ -670,7 +726,12 @@ void OpenOrder(int s, int orderType, int shift)
    // TP co dinh cach entry takeProfitDistance cua chien luoc
    double tp = isBuy ? entryPrice + g_strategies[s].takeProfitDistance : entryPrice - g_strategies[s].takeProfitDistance;
 
-   string orderComment = code;
+   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   string erKStr = DoubleToString(erK, 2);
+   string erStr  = DoubleToString(er, 2);
+
+   string orderComment = code + ", ATR: " + DoubleToString(atr, 1) + ", erK: " + erKStr + ", er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -680,7 +741,7 @@ void OpenOrder(int s, int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
       return;
    }
 
@@ -698,12 +759,13 @@ void OpenOrder(int s, int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
    }
 
    g_strategies[s].previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
-         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2));
+         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
+         ", erK: ", erKStr, ", er: ", erStr);
 }
 
 //=============================================================================
@@ -1109,4 +1171,13 @@ void ManageOpenPositions(int s)
 //
 // 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai, trail SL, thoat lenh,
 //    tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu de gan ma chien luoc.
+//
+// 9. Efficiency Ratio (goi trong OpenOrder, dung chung ca 5 chien luoc): do "do hieu qua"
+//    cua xu huong gia tren khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15). Ghi 2
+//    gia tri, lam tron 2 chu so thap phan:
+//      - er  (EfficiencyRatio): ER hien tai tai shift=1.
+//      - erK (ERRank): xep hang ER hien tai so voi InpERLookback (300) gia tri ER qua khu.
+//    Hien CHI de bao cao (ghi vao comment lenh dang "MF_xx, ATR: x.x, erK: x.xx, er: x.xx"
+//    + gui Telegram khi mo lenh), CHUA dung de loc tin hieu vao lenh (input InpERRank chung
+//    chua duoc tham chieu o dau khac).
 //=============================================================================
