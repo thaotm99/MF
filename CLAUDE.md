@@ -93,6 +93,23 @@ logic, trailing, daily/time-window limits, filters, etc.):
    (`MF/test/tricoral-multi-strategy-ea-MF-01-05.mq5`), sync its own end-of-file architecture
    comment as well.
 
+**IMPORTANT:** Order volume always scales with `g_lotMultiplier` (standalone files) /
+`g_strategies[s].volMultiplier` (merged file) via `CalcOrderVolume()`:
+```cpp
+double CalcOrderVolume(bool isBuy)
+{
+   return g_tradeLotSize * g_lotMultiplier;
+}
+```
+Because $ profit/loss on a position scales linearly with its volume, **any profit/loss
+calculation or threshold comparison must also be multiplied by this same factor** —
+otherwise the $ amount silently stops matching the actual lot size traded. This already
+applies in `DailyLimitReached`/`TimeWindowLimitReached` (thresholds like `dailyMaxLoss`,
+`dailyMaxProfit`, `timeWindowMaxProfit` are multiplied by `g_lotMultiplier`/`volMultiplier`
+before comparing against `dailyPnl`/`windowPnl`). Follow this same pattern for any new P/L
+logic (reporting, comparison across time windows, new limit checks, etc.) — multiply either
+the computed P/L or the $ threshold by the strategy's lot multiplier before comparing.
+
 **IMPORTANT:** When asked to add a new Tricoral strategy, do NOT pick a strategy code or
 merge it into the merged EA on your own judgment. Required order:
 1. Propose the new strategy code (next `MF_xx` after the current highest) with a short

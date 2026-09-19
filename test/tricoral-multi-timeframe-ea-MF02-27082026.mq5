@@ -11,7 +11,7 @@
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
- string InpTelegramChatID        = "7383830655"; // FRTMO
+ string InpTelegramChatID        = "-1004343744850"; //  MF-01-05
 
 //=============================================================================
 // INPUTS (Magic Number - phan biet lenh bot vs lenh thu cong)
@@ -24,6 +24,7 @@ input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong ma
  double InpTrailDistance       = 10;  // Khoảng cách bám SL khi đã ở vùng dương
 input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
 input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
+input int    InpTrailModifyCooldown = 2;    // Giây tối thiểu giữa 2 lần THỰC SỰ gửi lệnh sửa SL lên sàn (tách biệt, không liên quan thời gian gửi Telegram)
 
 //=============================================================================
 // INPUTS (stop loss)
@@ -68,10 +69,11 @@ input double          InpERRank     = 0.50;        // Nguong tham khao (chua dun
 //=============================================================================
 string   g_previousPosition = "NONE";
 double   g_tradeLotSize     = 0;
-double   g_lotMultiplier    =  1;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
+double   g_lotMultiplier    =  10;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
 
 double   g_lastNotifiedSL   = 0;
 datetime g_lastNotifyTime   = 0;
+datetime g_lastModifyTime   = 0;   // lan gan nhat THUC SU gui lenh sua SL len san (throttle InpTrailModifyCooldown)
 
 CTrade   trade;
 
@@ -543,12 +545,20 @@ void TrailingStop(ulong ticket)
       return; // chua du dieu kien
    }
 
+   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
+   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
+   {
+      Print("TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
+      return;
+   }
+
    if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
    {
       Print("TrailingStop #", ticket, ": PositionModify failed, error code: ", GetLastError());
       return;
    }
 
+   g_lastModifyTime = TimeCurrent();
    Print("TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
 
    // ----- Thong bao Telegram -----
@@ -723,11 +733,15 @@ double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
 //
-// 4. Trailing stop 2 giai đoạn (TrailingStop):
+// 4. Trailing stop 2 giai đoạn (TrailingStop, chạy MỌI tick, không chờ nến mới):
 //      - Giai đoạn 1 (breakeven): khi lãi >= InpTrailDistance, kéo SL về đúng giá entry.
 //      - Giai đoạn 2 (trail): khi SL đã ở mức entry trở lên, tiếp tục bám SL cách giá
 //        hiện tại InpTrailDistance, chỉ đổi theo hướng có lợi và luôn kiểm tra stops
 //        level tối thiểu của broker (StopsLevelOk) trước khi gửi lệnh sửa SL.
+//      - Throttle gửi lệnh: dù giá cải thiện từng tick, chỉ THỰC SỰ gửi PositionModify()
+//        tối đa 1 lần mỗi InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime) để
+//        tránh spam request lên sàn khi giá chạy liên tục. Cooldown này độc lập hoàn toàn
+//        với InpTrailNotifyCooldown (chỉ chi phối tần suất gửi Telegram, không liên quan).
 //
 // 5. Volume: cố định = min lot của symbol nhân hệ số g_lotMultiplier (CalcOrderVolume),
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).

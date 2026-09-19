@@ -11,7 +11,7 @@
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
- string InpTelegramChatID        = "7383830655"; // FRTMO
+ string InpTelegramChatID        = "-1004343744850"; //  MF-01-05
 
 //=============================================================================
 // INPUTS (Magic Number - phan biet lenh bot vs lenh thu cong)
@@ -53,7 +53,7 @@ input double          InpERRank     = 0.50;        // Nguong tham khao (chua dun
 //=============================================================================
 string   g_previousPosition = "NONE";
 double   g_tradeLotSize     = 0;
-double   g_lotMultiplier    =  1;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
+double   g_lotMultiplier    =  10;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
 
 CTrade   trade;
 

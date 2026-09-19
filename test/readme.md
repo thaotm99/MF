@@ -181,3 +181,6 @@ File: `tricoral-multi-timeframe-ea-MF05-170926.mq5`
 - Mỗi chiến lược có magic + comment lệnh riêng (`IsBotPosition(s)` check cả 2 lớp), giới hạn
   lãi/lỗ ngày + khung giờ tính riêng theo magic từng chiến lược — chạm ngưỡng chỉ chặn
   `OpenOrder` của chiến lược đó, không ảnh hưởng chiến lược khác.
+
+
+Bot: https://api.telegram.org/bot8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE/getUpdates

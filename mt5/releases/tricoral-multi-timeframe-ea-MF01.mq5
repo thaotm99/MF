@@ -10,7 +10,7 @@
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
- string InpTelegramChatID        = "7383830655"; // FRTMO
+ string InpTelegramChatID        = "7383830655"; // 
 
 //=============================================================================
 // INPUTS (Magic Number - phan biet lenh bot vs lenh thu cong)

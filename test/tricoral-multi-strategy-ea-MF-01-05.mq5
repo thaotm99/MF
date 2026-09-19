@@ -18,12 +18,13 @@
 //=============================================================================
 // INPUTS (dung chung cho ca 5 chien luoc)
 //=============================================================================
-input string InpCoralIndicatorName  = "Coral-custom";
-input string InpTelegramToken       = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
-input string InpTelegramChatID      = "7383830655"; // FRTMO
+ string InpCoralIndicatorName = "Coral-custom";
+ string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
+ string InpTelegramChatID        = "-1004343744850"; //  MF-01-05
 
 input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them >= gia tri nay
 input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing (dung chung moi chien luoc)
+input int    InpTrailModifyCooldown = 2;    // Giay toi thieu giua 2 lan THUC SU gui lenh sua SL len san (dung chung moi chien luoc, tach biet - khong lien quan thoi gian gui Telegram)
 
 //=============================================================================
 // INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, dung chung
@@ -159,6 +160,7 @@ double   g_tradeLotSize   = 0;
 
 double   g_lastNotifiedSL = 0;
 datetime g_lastNotifyTime = 0;
+datetime g_lastModifyTime = 0;   // lan gan nhat THUC SU gui lenh sua SL len san (throttle InpTrailModifyCooldown, dung chung moi chien luoc)
 
 CTrade   trade;
 
@@ -897,12 +899,20 @@ void TrailingStopTwoStage(int s, ulong ticket)
       return;
    }
 
+   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
+   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
+   {
+      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
+      return;
+   }
+
    if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
    {
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": PositionModify failed, error code: ", GetLastError());
       return;
    }
 
+   g_lastModifyTime = TimeCurrent();
    Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
    NotifyTrailing(s, ticket, isBuy, entryPrice, sl, newSL);
 }
@@ -964,12 +974,20 @@ void TrailingStopBreakevenOnly(int s, ulong ticket)
       return;
    }
 
+   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
+   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
+   {
+      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
+      return;
+   }
+
    if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
    {
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": PositionModify failed, error code: ", GetLastError());
       return;
    }
 
+   g_lastModifyTime = TimeCurrent();
    Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
    NotifyTrailing(s, ticket, isBuy, entryPrice, sl, newSL);
 }
@@ -1152,7 +1170,12 @@ void ManageOpenPositions(int s)
 //
 // 4. Trailing stop - 3 kieu (ENUM_TRAIL_MODE): TRAIL_TWO_STAGE (MF_01/MF_02/MF_05, breakeven
 //    roi bam SL tiep theo trailDistance), TRAIL_BREAKEVEN_ONLY (MF_03, chi breakeven roi
-//    dung), TRAIL_NONE (MF_04, khong trailing, chi con SL/TP co dinh).
+//    dung), TRAIL_NONE (MF_04, khong trailing, chi con SL/TP co dinh). Ca 2 ham
+//    TrailingStopTwoStage/TrailingStopBreakevenOnly chay MOI tick; de tranh spam
+//    PositionModify() len san khi gia chay lien tuc, chi THUC SU gui lenh sua SL toi da 1
+//    lan moi InpTrailModifyCooldown giay (mac dinh 2s, g_lastModifyTime dung chung moi
+//    chien luoc) - throttle nay doc lap hoan toan voi InpTrailNotifyCooldown (chi chi phoi
+//    tan suat gui Telegram).
 //
 // 5. Volume: vol = min lot cua symbol * volMultiplier rieng tung chien luoc (input
 //    MFxx_VolMultiplier), khong tang theo chuoi lenh.
