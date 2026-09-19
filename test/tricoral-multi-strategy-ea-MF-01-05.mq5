@@ -35,6 +35,7 @@ input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency
 input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
 input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
 input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
+input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram, dung chung ca 5 chien luoc
 
 //=============================================================================
 // MF_01 - Coral 3TF thuan, dong het lenh bot khi M1 dao chieu, trailing 2 giai doan
@@ -161,6 +162,7 @@ double   g_tradeLotSize   = 0;
 double   g_lastNotifiedSL = 0;
 datetime g_lastNotifyTime = 0;
 datetime g_lastModifyTime = 0;   // lan gan nhat THUC SU gui lenh sua SL len san (throttle InpTrailModifyCooldown, dung chung moi chien luoc)
+datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (throttle InpSidewayNotifyCooldown, dung chung moi chien luoc)
 
 CTrade   trade;
 
@@ -427,16 +429,20 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 // la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
 // Dung chung ca 5 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
 //=============================================================================
-// Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15)
+// Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15).
+// Tra ve -1.0 neu tham so khong hop le (period<2, shift<0) hoac khong du du lieu/gia di
+// ngang tuyet doi (path<=0) - dong nhat 1 sentinel "khong dung duoc" cho moi truong hop.
 double EfficiencyRatio(ENUM_TIMEFRAMES tf, int period, int shift)
 {
+   if(period < 2 || shift < 0) return -1.0;
+
    double c[];
    ArraySetAsSeries(c, true);
    if(CopyClose(_Symbol, tf, shift, period + 1, c) < period + 1) return -1.0;
    double disp = MathAbs(c[0] - c[period]);
    double path = 0.0;
    for(int i = 0; i < period; i++) path += MathAbs(c[i] - c[i + 1]);
-   return (path > 0.0) ? disp / path : 0.0;
+   return (path > 0.0) ? disp / path : -1.0;
 }
 
 // Xep hang ER hien tai (shift=1) so voi "lookback" gia tri ER cua cac cua so truot qua khu
@@ -464,6 +470,35 @@ double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
       if(disp / path < cur) below++;
    }
    return (valid > 0) ? (double)below / valid : -1.0;
+}
+
+// Canh bao Telegram khi thi truong dang sideway (Efficiency Ratio qua thap tren InpERtf,
+// mac dinh M5) - CHI de thong bao, khong lien quan gioi han vao/dong lenh, khong phu thuoc
+// chien luoc nao (goi 1 lan duy nhat moi nen M1 moi trong OnTick, khong lap lai theo tung
+// chien luoc dang bat). Throttle rieng bang InpSidewayNotifyCooldown (mac dinh 1800s = 30
+// phut), doc lap voi moi cooldown khac.
+void NotifySidewayMarket()
+{
+   double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   if(!(er > 0 && er < 0.1)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
+
+   if((TimeCurrent() - g_lastSidewayNotifyTime) < InpSidewayNotifyCooldown)
+   {
+      Print("NotifySidewayMarket: sideway detected (er=", DoubleToString(er, 2), ") nhung chua du InpSidewayNotifyCooldown giay tu lan bao truoc");
+      return;
+   }
+
+   double erK = ERRank(InpERtf, InpERPeriod, InpERLookback);
+
+   double atrBuf[]; ArraySetAsSeries(atrBuf, true);
+   double atr = 0;
+   if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
+
+   SendTelegram("Sideway warning - " + _Symbol + " %0A ATR: " + DoubleToString(atr, 1) +
+                " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
+
+   g_lastSidewayNotifyTime = TimeCurrent();
+   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", erK=", DoubleToString(erK, 2), ", er=", DoubleToString(er, 2), ")");
 }
 
 //=============================================================================
@@ -512,6 +547,8 @@ void OnTick()
       snap = BuildCoralSnapshot(1);
       Print("Coral trend snapshot - M1 up:", snap.upNow, " M1 up(prev):", snap.upPrev, " M5 up:", snap.upM5, " M15 up:", snap.upM15,
             " | M1 down:", snap.downNow, " M1 down(prev):", snap.downPrev, " M5 down:", snap.downM5, " M15 down:", snap.downM15);
+
+      NotifySidewayMarket();   // canh bao rieng, 1 lan/nen, khong phu thuoc chien luoc nao
    }
 
    for(int s = 0; s < ArraySize(g_strategies); s++)
@@ -672,7 +709,7 @@ double CalcOrderVolume(int s)
 // Mo lenh buy/sell cho chien luoc s: tinh SL theo swing gan nhat (cap boi slSpacingDistance),
 // bo qua neu ATR qua thap, da cham gioi han lai/lo trong ngay, hoac gioi han lai trong khung gio;
 // gui thong bao Telegram (kem ER) cho ca truong hop thanh cong lan that bai. Comment lenh dang
-// "MF_xx, ATR: x.x, erK: x.xx, er: x.xx" (ma chien luoc + ATR + ERRank + EfficiencyRatio).
+// "MF_xx, A: x.x, ek: x.xx, er: x.xx" (ma chien luoc + ATR + ERRank + EfficiencyRatio).
 void OpenOrder(int s, int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
@@ -733,7 +770,7 @@ void OpenOrder(int s, int orderType, int shift)
    string erKStr = DoubleToString(erK, 2);
    string erStr  = DoubleToString(er, 2);
 
-   string orderComment = code + ", ATR: " + DoubleToString(atr, 1) + ", erK: " + erKStr + ", er: " + erStr;
+   string orderComment = code + ", A: " + DoubleToString(atr, 1) + ", ek: " + erKStr + ", er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -997,11 +1034,17 @@ void TrailingStopBreakevenOnly(int s, ulong ticket)
 //=============================================================================
 // Thoat lenh khi Coral dao chieu nguoc huong lenh, xet rieng tung lenh cua chien luoc s:
 //   - Lenh CHUA breakeven (SL chua ve entry): xet Coral M1 -> thoat nhanh, cat lo som.
-//   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, chi thoat khi Coral M5
-//     dao nguoc huong lenh. M5 cham hon M1 nen lenh khong bi nhieu ngan han da ra;
-//     xau nhat la SL o entry an truoc, hoa von.
+//   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, thoat khi Coral M5 dao
+//     nguoc huong lenh HOAC khi Efficiency Ratio hien tai (InpERtf/InpERPeriod, shift=1)
+//     qua thap (0 < er < 0.1, thi truong di giang co/kem hieu qua) - khong can cho M5 xac
+//     nhan, tranh gong lai khi trend da thuc chat "chet" nhung Coral M5 chua kip doi mau.
+//     M5 cham hon M1 nen lenh khong bi nhieu ngan han da ra; xau nhat la SL o entry an
+//     truoc, hoa von.
 void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
 {
+   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   bool   weakEr = (er > 0 && er < 0.1);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.1 = qua kem hieu qua
+
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
@@ -1009,18 +1052,18 @@ void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
       if(!PositionSelectByTicket(ticket)) continue;
       if(!IsBotPosition(s)) continue;
 
-      bool   isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
-      bool   atBreakeven = IsPositionAtBreakeven();
-      string tfName      = atBreakeven ? "M5" : "M1";
+      bool isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      bool atBreakeven = IsPositionAtBreakeven();
+      bool m5Reversed  = isBuy ? snap.downM5 : snap.upM5;
       // doc truoc khi close - sau khi close position khong con select duoc nua
       double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
       double slNow       = PositionGetDouble(POSITION_SL);
 
-      bool reversed = atBreakeven ? (isBuy ? snap.downM5 : snap.upM5)
-                                  : (isBuy ? snap.downNow : snap.upNow);
+      bool   reversed = atBreakeven ? (m5Reversed || weakEr) : (isBuy ? snap.downNow : snap.upNow);
+      string tfName   = !atBreakeven ? "M1" : (m5Reversed ? "M5" : "ER thap (" + DoubleToString(er, 2) + ")");
 
       Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-            ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
+            ": atBreakeven=", atBreakeven, " er=", DoubleToString(er, 2), " -> xet dao chieu tren ", tfName,
             ", reversed=", reversed);
 
       if(!reversed) continue;
@@ -1032,8 +1075,8 @@ void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
          continue;
       }
 
-      Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, ": closed - Coral ", tfName, " dao chieu");
-      SendTelegram(TelegramMsg(g_strategies[s].code + " Exit " + (isBuy ? "BUY" : "SELL") + " - Coral " + tfName + " dao chieu",
+      Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, ": closed - ", tfName, " dao chieu");
+      SendTelegram(TelegramMsg(g_strategies[s].code + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
          DoubleToString(entryPrice, 2), DoubleToString(slNow, 2),
          (atBreakeven ? "gong lai" : "chua breakeven"), "-", "-"));
    }
@@ -1091,11 +1134,13 @@ bool LastClosedDealsSameDirection(int s, bool isBuy, int count)
 
 // Dong lenh cua chien luoc s (theo magic) ngược huong voi trend Coral M1 hien tai
 // (upNow/downNow), giu nguyen lenh chien luoc khac / lenh thu cong. Voi tung lenh:
-//   - Lenh dang lai (profit >= 0): dong ngay.
-//   - Lenh dang lo (profit < 0): chi dong neu holdStreakCount deal dong gan nhat DEU cung
-//     huong lenh nay (LastClosedDealsSameDirection) - tuc da co 1 chuoi lenh cung huong du
-//     dai roi. Neu chuoi hien tai con trong N lenh dau (bi lenh nguoc huong "cat" truoc do),
-//     giu lenh lai vi tin hieu dao chieu co the chi la nhieu ngan han.
+//   - Lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry) >= khoang cach rui ro
+//     |entry - SL|: dong ngay (vd entry=4300, SL=4295 -> risk=5, phai lai >=5 gia moi dong).
+//     Dung khoang cach gia, KHONG dung POSITION_PROFIT ($).
+//   - Con lai (lai chua dat muc risk, ke ca dang lo): chi dong neu holdStreakCount deal dong
+//     gan nhat DEU cung huong lenh nay (LastClosedDealsSameDirection) - tuc da co 1 chuoi
+//     lenh cung huong du dai roi. Neu chuoi hien tai con trong N lenh dau (bi lenh nguoc
+//     huong "cat" truoc do), giu lenh lai vi tin hieu dao chieu co the chi la nhieu ngan han.
 void CloseReversedPositions(int s, bool upNow, bool downNow)
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -1109,11 +1154,17 @@ void CloseReversedPositions(int s, bool upNow, bool downNow)
       bool reversed = isBuy ? downNow : upNow;
       if(!reversed) continue;
 
-      double profit = PositionGetDouble(POSITION_PROFIT);
-      if(profit < 0 && !LastClosedDealsSameDirection(s, isBuy, g_strategies[s].holdStreakCount))
+      double entryPrice     = PositionGetDouble(POSITION_PRICE_OPEN);
+      double slPrice        = PositionGetDouble(POSITION_SL);
+      double riskDistance   = MathAbs(entryPrice - slPrice);
+      double currentPrice   = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double profitDistance = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+
+      if(profitDistance < riskDistance && !LastClosedDealsSameDirection(s, isBuy, g_strategies[s].holdStreakCount))
       {
          Print(g_strategies[s].code, " Position #", ticket, " (", (isBuy ? "BUY" : "SELL"),
-               ") dang lo nhung con trong ", g_strategies[s].holdStreakCount, " lenh dau chuoi moi - giu lenh");
+               ") lai theo gia=", DoubleToString(profitDistance, 2), " chua dat muc rui ro=", DoubleToString(riskDistance, 2),
+               " va con trong ", g_strategies[s].holdStreakCount, " lenh dau chuoi moi - giu lenh");
          continue;
       }
 
@@ -1156,13 +1207,17 @@ void ManageOpenPositions(int s)
 //      chien luoc, M1 Coral dao chieu nguoc position gan nhat -> dong HET lenh cua chien
 //      luoc do, khong xet lai/lo tung lenh.
 //    - EXIT_PER_POSITION_M1_M5 (MF_03): xet tung lenh rieng - chua breakeven -> thoat theo
-//      M1 (cat lo som); da breakeven -> chi thoat theo M5 (gong lai, tranh nhieu M1).
+//      M1 (cat lo som); da breakeven -> thoat theo M5 (gong lai, tranh nhieu M1) HOAC khi ER
+//      hien tai qua thap (0<er<0.1, xem ExitPositionsOnReversal) - khong can cho M5 xac nhan.
 //    - EXIT_STREAK_GUARDED_CLOSE_ALL (MF_05, CloseReversedPositions): giong dieu kien kich
 //      hoat cua EXIT_LEGACY_CLOSE_ALL (M1 dao chieu nguoc previousPosition), nhung xet tung
-//      lenh rieng: lenh dang lai dong ngay; lenh dang lo chi dong khi holdStreakCount deal
-//      dong gan nhat (LastClosedDealsSameDirection) DEU cung huong lenh do (da co 1 chuoi
-//      lenh cung huong du dai); neu lenh con nam trong N lenh dau cua 1 chuoi moi thi giu
-//      lenh lai du dang lo, vi tin hieu dao chieu co the chi la nhieu ngan han.
+//      lenh rieng: lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry, KHONG dung
+//      POSITION_PROFIT $) - neu lai >= khoang cach rui ro |entry-SL| thi dong ngay (vd
+//      entry=4300, SL=4295 -> risk=5, phai lai >=5 gia); con lai (chua dat muc risk, ke ca
+//      dang lo) chi dong khi holdStreakCount deal dong gan nhat (LastClosedDealsSameDirection)
+//      DEU cung huong lenh do (da co 1 chuoi lenh cung huong du dai); neu lenh con nam trong
+//      N lenh dau cua 1 chuoi moi thi giu lenh lai, vi tin hieu dao chieu co the chi la
+//      nhieu ngan han.
 //
 // 3. SL/TP & loc tin hieu (OpenOrder, dung chung cong thuc, tham so rieng tung chien luoc):
 //    SL theo swing gan nhat (14 nen M1), cap boi slSpacingDistance. TP co dinh cach entry
@@ -1195,12 +1250,18 @@ void ManageOpenPositions(int s)
 // 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai, trail SL, thoat lenh,
 //    tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu de gan ma chien luoc.
 //
-// 9. Efficiency Ratio (goi trong OpenOrder, dung chung ca 5 chien luoc): do "do hieu qua"
-//    cua xu huong gia tren khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15). Ghi 2
-//    gia tri, lam tron 2 chu so thap phan:
-//      - er  (EfficiencyRatio): ER hien tai tai shift=1.
-//      - erK (ERRank): xep hang ER hien tai so voi InpERLookback (300) gia tri ER qua khu.
-//    Hien CHI de bao cao (ghi vao comment lenh dang "MF_xx, ATR: x.x, erK: x.xx, er: x.xx"
-//    + gui Telegram khi mo lenh), CHUA dung de loc tin hieu vao lenh (input InpERRank chung
-//    chua duoc tham chieu o dau khac).
+// 9. Efficiency Ratio (dung chung ca 5 chien luoc): do "do hieu qua" cua xu huong gia tren
+//    khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15).
+//    - Trong OpenOrder: ghi 2 gia tri (lam tron 2 chu so thap phan) vao comment lenh dang
+//      "MF_xx, A: x.x, ek: x.xx, er: x.xx" + gui Telegram khi mo lenh - er (EfficiencyRatio,
+//      ER hien tai tai shift=1) va erK (ERRank, xep hang ER hien tai so voi InpERLookback=300
+//      gia tri ER qua khu). CHUA dung de loc tin hieu vao lenh (input InpERRank chung chua
+//      duoc tham chieu o dau khac).
+//    - Trong ExitPositionsOnReversal (MF_03, lenh da breakeven): dung them er (0<er<0.1) lam
+//      dieu kien thoat som song song voi tin hieu M5 (xem muc 2).
+//    - Canh bao sideway (NotifySidewayMarket, goi trong OnTick moi nen M1 moi, 1 lan duy
+//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.1 thi gui Telegram (ATR + erK + er),
+//      toi da 1 lan moi InpSidewayNotifyCooldown giay (mac dinh 1800s = 30 phut,
+//      g_lastSidewayNotifyTime) - khong anh huong toi viec vao/dong lenh cua bat ky chien
+//      luoc nao.
 //=============================================================================

@@ -48,6 +48,12 @@ Tất cả biến thể đều dùng chung các khối sau (khác nhau ở tham 
   Tự "reset" khi sang khung mới vì luôn tính lại theo khung hiện tại.
 - **Thông báo Telegram**: mọi sự kiện quan trọng (mở lệnh OK/FAIL, trail SL, tín hiệu bị bỏ
   qua do ATR thấp, đóng lệnh, chạm giới hạn P/L) đều gửi qua `SendTelegram`.
+- **Cảnh báo sideway** (`NotifySidewayMarket`, gọi mỗi nến M1 mới, độc lập hoàn toàn với
+  việc vào/đóng lệnh): nếu `0 < er < 0.1` (Efficiency Ratio trên `InpERtf`, mặc định M5, quá
+  thấp — thị trường đi giằng co) thì gửi Telegram gồm ATR + `erK` (ERRank) + `er`
+  (EfficiencyRatio), tối đa 1 lần mỗi `InpSidewayNotifyCooldown` giây (mặc định 1800s = 30
+  phút). Ở file gộp, check này chạy **1 lần duy nhất** mỗi nến (không lặp theo từng chiến
+  lược đang bật, vì ER không phụ thuộc chiến lược nào).
 
 **Chỗ 5 chiến lược khác nhau thật sự** chỉ nằm ở 2 điểm: **(a)** cách đóng lệnh khi Coral
 đảo chiều, và **(b)** có/không trailing stop (và cách trail). MF_02 có thêm bộ lọc RSI.
@@ -58,7 +64,7 @@ Tất cả biến thể đều dùng chung các khối sau (khác nhau ở tham 
 |---|---|---|---|---|---|
 | Tín hiệu Coral 3TF (M1/M5/M15) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bộ lọc thêm | — | RSI(9) vs SMA45(RSI) | — | — | — |
-| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi→đóng ngay, lỗ→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng |
+| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 **hoặc** ER thấp (`0<er<0.1`) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng |
 | **Trailing stop** | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) | Chỉ breakeven (không trail tiếp) | **Không** (SL/TP cố định) | 2 giai đoạn (breakeven→trail) |
 | TrailDistance | 10 | 10 | 10 | n/a | 10 |
 | SlSpacingDistance | 8 | 8 | 8 | 8 | 8 |
@@ -105,7 +111,7 @@ File: `tricoral-multi-timeframe-ea-MF02-27082026.mq5`
   SELL cần thêm `rsi < SMA45(rsi)`.
 - Mục đích: lọc bớt tín hiệu Coral "yếu" bằng cách yêu cầu RSI cũng đồng thuận hướng.
 
-### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 khi đã hoà vốn)
+### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 hoặc ER thấp khi đã hoà vốn)
 
 File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
 
@@ -117,9 +123,12 @@ File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
   breakeven hay chưa (`IsPositionAtBreakeven` — SL đã kéo về entry chưa):
   - **Chưa breakeven** (còn rủi ro): xét Coral **M1** — M1 đảo ngược hướng lệnh là đóng ngay
     → cắt lỗ sớm.
-  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, chỉ
-    đóng khi Coral **M5** đảo ngược hướng. M5 chậm hơn M1 nên lệnh không bị nhiễu ngắn hạn đá
-    ra sớm; xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
+  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, đóng
+    khi Coral **M5** đảo ngược hướng **HOẶC** khi Efficiency Ratio hiện tại
+    (`EfficiencyRatio(InpERtf, InpERPeriod, 1)`) quá thấp (`0 < er < 0.1`, thị trường đi
+    giằng co/kém hiệu quả) — không cần chờ M5 xác nhận, tránh gồng lãi khi trend đã thực
+    chất "chết" nhưng Coral M5 chưa kịp đổi màu. M5 chậm hơn M1 nên lệnh không bị nhiễu ngắn
+    hạn đá ra sớm; xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
 - **Trailing** (`TrailingStop`, chỉ 1 giai đoạn breakeven): kéo SL về entry khi lãi đủ
   `InpTrailDistance` rồi **dừng lại**, không bám tiếp SL theo giá như MF_01 — vì việc "gồng
   lãi" sau breakeven đã chuyển hẳn sang nghe tín hiệu M5 ở `ExitPositionsOnReversal`.
@@ -147,21 +156,26 @@ File: `tricoral-multi-timeframe-ea-MF05-170926.mq5`
 - Giống **hệt MF_01** về tín hiệu vào lệnh và trailing (2 giai đoạn). Khác duy nhất ở cách
   xử lý khi Coral M1 đảo chiều ngược `g_previousPosition`.
 - **Đóng lệnh có điều kiện** (`CloseReversedPositions`, thay cho `CloseAllPositions()` của
-  MF_01): khi phát hiện đảo chiều, xét **từng lệnh** đang mở ngược hướng trend mới:
-  - **Lệnh đang lãi** (`POSITION_PROFIT >= 0`): đóng ngay, giống MF_01.
-  - **Lệnh đang lỗ** (`POSITION_PROFIT < 0`): chỉ đóng nếu **N deal đóng gần nhất** (mặc định
-    N=5, lọc theo magic + symbol, chỉ tính deal `DEAL_ENTRY_OUT`) đều **cùng hướng** với lệnh
-    đang xét (`LastClosedDealsSameDirection`) — tức thị trường đã có 1 chuỗi ≥N lệnh cùng
-    hướng trước đó rồi, tín hiệu đảo chiều đáng tin hơn.
-  - Nếu lệnh đang lỗ nhưng **còn nằm trong N lệnh đầu** của 1 chuỗi mới (bị lệnh ngược hướng
-    "cắt" chuỗi trước đó, nên chưa đủ N deal cùng hướng) → **giữ lệnh lại**, không đóng, vì
-    tín hiệu đảo chiều lúc này có thể chỉ là nhiễu ngắn hạn.
+  MF_01): khi phát hiện đảo chiều, xét **từng lệnh** đang mở ngược hướng trend mới. Lãi tính
+  theo **khoảng cách giá** (giá hiện tại so với entry — Bid với BUY, Ask với SELL), **không**
+  dùng `POSITION_PROFIT` ($):
+  - **Lãi theo giá ≥ khoảng cách rủi ro** `|entry − SL|`: đóng ngay. Ví dụ entry=4300,
+    SL=4295 → risk=5 → phải lãi ≥5 giá mới đóng (tương đương lãi ít nhất bằng đúng phần có
+    thể mất nếu dính SL).
+  - **Chưa đạt mức risk đó** (kể cả đang lãi nhẹ hoặc đang lỗ): chỉ đóng nếu **N deal đóng gần
+    nhất** (mặc định N=5, lọc theo magic + symbol, chỉ tính deal `DEAL_ENTRY_OUT`) đều **cùng
+    hướng** với lệnh đang xét (`LastClosedDealsSameDirection`) — tức thị trường đã có 1 chuỗi
+    ≥N lệnh cùng hướng trước đó rồi, tín hiệu đảo chiều đáng tin hơn.
+  - Nếu còn nằm trong **N lệnh đầu** của 1 chuỗi mới (bị lệnh ngược hướng "cắt" chuỗi trước
+    đó, nên chưa đủ N deal cùng hướng) → **giữ lệnh lại**, không đóng, vì tín hiệu đảo chiều
+    lúc này có thể chỉ là nhiễu ngắn hạn.
   - Nếu chưa đủ N deal trong lịch sử (bot mới chạy) → mặc định giữ lệnh (coi như chưa đủ điều
     kiện đóng).
-- Ý tưởng: MF_01 đóng hết lệnh ngay khi có tín hiệu ngược, kể cả khi đang lỗ ít và thị trường
-  có thể chỉ đang giằng co (chưa đủ 1 chuỗi lệnh cùng hướng để xác nhận xu hướng đã đổi thật
-  sự) — MF_05 "kiên nhẫn" hơn với lệnh lỗ trong giai đoạn đầu 1 chuỗi mới, chỉ cắt lỗ dứt
-  khoát khi xu hướng cũ đã đủ dài (≥N lệnh) mới đảo chiều.
+- Ý tưởng: MF_01 đóng hết lệnh ngay khi có tín hiệu ngược, kể cả khi lãi chưa bù nổi rủi ro
+  đã bỏ ra hoặc thị trường có thể chỉ đang giằng co — MF_05 chỉ chốt ngay khi lãi đã vượt qua
+  đúng mức rủi ro ban đầu (đủ để "hòa" nếu tính luôn phần đã có thể mất); nếu chưa, "kiên
+  nhẫn" hơn với lệnh trong giai đoạn đầu 1 chuỗi mới, chỉ cắt dứt khoát khi xu hướng cũ đã đủ
+  dài (≥N lệnh) mới đảo chiều.
 - Trong **file gộp**, N được đưa ra thành input `InpMF05_HoldStreakCount` (mặc định 5) thay
   vì hard-code; bản standalone dùng giá trị cố định `5`.
 
