@@ -573,7 +573,7 @@ double CalcOrderVolume(bool isBuy)
 //   - Lệnh CHƯA breakeven (SL chưa về entry): xét Coral M1 -> thoát nhanh, cắt lỗ sớm.
 //   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, thoát khi Coral M5 đảo chiều
 //     HOẶC khi Efficiency Ratio hiện tại (InpERtf/InpERPeriod, shift=1) quá thấp
-//     (0 < er < 0.1, thị trường đi giằng co/kém hiệu quả) - không cần chờ M5 xác nhận mới
+//     (0 < er < 0.05, thị trường đi giằng co/kém hiệu quả) - không cần chờ M5 xác nhận mới
 //     thoát, tránh gồng lãi khi trend đã thực chất "chết" dù Coral M5 chưa kịp đổi màu.
 //     M5 chậm hơn M1 nên lệnh không bị đá ra bởi nhiễu ngắn hạn; xấu nhất là SL ở entry ăn
 //     trước, hòa vốn.
@@ -585,7 +585,7 @@ void ExitPositionsOnReversal(int shift)
    bool downM5 = IsCoralDown(PERIOD_M5, shift);
 
    double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   bool   weakEr = (er > 0 && er < 0.1);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.1 = qua kem hieu qua
+   bool   weakEr = (er > 0 && er < 0.05);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.05 = qua kem hieu qua
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -729,7 +729,7 @@ double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
 void NotifySidewayMarket()
 {
    double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   if(!(er > 0 && er < 0.1)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
+   if(!(er > 0 && er < 0.05)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
 
    if((TimeCurrent() - g_lastSidewayNotifyTime) < InpSidewayNotifyCooldown)
    {
@@ -766,7 +766,7 @@ void NotifySidewayMarket()
 //        ngay -> thoát nhanh, cắt lỗ sớm, giữ nguyên hành vi cũ.
 //      - ĐÃ breakeven (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, BỎ QUA tín hiệu đảo
 //        chiều M1, đóng khi Coral M5 đảo ngược hướng lệnh HOẶC khi Efficiency Ratio hiện tại
-//        (EfficiencyRatio(InpERtf, InpERPeriod, 1)) quá thấp (0 < er < 0.1, thị trường đi
+//        (EfficiencyRatio(InpERtf, InpERPeriod, 1)) quá thấp (0 < er < 0.05, thị trường đi
 //        giằng co/kém hiệu quả) - không cần chờ M5 xác nhận, tránh gồng lãi khi trend đã
 //        thực chất "chết" nhưng Coral M5 chưa kịp đổi màu. M5 chậm hơn nên lệnh không bị
 //        nhiễu M1 đá ra sớm, để lãi chạy tiếp; nếu giá quay đầu thật thì xấu nhất là chạm SL
@@ -826,10 +826,10 @@ void NotifySidewayMarket()
 //       Telegram khi mở lệnh - er (EfficiencyRatio, ER hiện tại tại shift=1) và erK (ERRank,
 //       xếp hạng ER hiện tại so với InpERLookback=300 giá trị ER quá khứ). CHƯA dùng để lọc
 //       tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
-//     - Trong ExitPositionsOnReversal (lệnh đã breakeven): dùng thêm er (0 < er < 0.1) làm
+//     - Trong ExitPositionsOnReversal (lệnh đã breakeven): dùng thêm er (0 < er < 0.05) làm
 //       điều kiện thoát sớm song song với tín hiệu M5 (xem mục 2).
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
-//       0 < er < 0.1 thì gửi Telegram (ATR + erK + er), tối đa 1 lần mỗi
+//       0 < er < 0.05 thì gửi Telegram (ATR + erK + er), tối đa 1 lần mỗi
 //       InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút, g_lastSidewayNotifyTime) -
 //       độc lập hoàn toàn với các cooldown khác và không ảnh hưởng tới việc vào/đóng lệnh.
 //=============================================================================

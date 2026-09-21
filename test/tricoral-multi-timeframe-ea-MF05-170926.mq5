@@ -732,7 +732,7 @@ double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
 void NotifySidewayMarket()
 {
    double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   if(!(er > 0 && er < 0.1)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
+   if(!(er > 0 && er < 0.05)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
 
    if((TimeCurrent() - g_lastSidewayNotifyTime) < InpSidewayNotifyCooldown)
    {
@@ -825,7 +825,7 @@ void NotifySidewayMarket()
 //       xếp hạng ER hiện tại so với InpERLookback=300 giá trị ER quá khứ). CHƯA dùng để lọc
 //       tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
-//       0 < er < 0.1 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + erK +
+//       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + erK +
 //       er), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,
 //       g_lastSidewayNotifyTime) - độc lập hoàn toàn với các cooldown khác (trailing, v.v.)
 //       và không ảnh hưởng tới việc vào/đóng lệnh.

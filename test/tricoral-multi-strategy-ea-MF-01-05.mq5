@@ -480,7 +480,7 @@ double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
 void NotifySidewayMarket()
 {
    double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   if(!(er > 0 && er < 0.1)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
+   if(!(er > 0 && er < 0.05)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
 
    if((TimeCurrent() - g_lastSidewayNotifyTime) < InpSidewayNotifyCooldown)
    {
@@ -1036,14 +1036,14 @@ void TrailingStopBreakevenOnly(int s, ulong ticket)
 //   - Lenh CHUA breakeven (SL chua ve entry): xet Coral M1 -> thoat nhanh, cat lo som.
 //   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, thoat khi Coral M5 dao
 //     nguoc huong lenh HOAC khi Efficiency Ratio hien tai (InpERtf/InpERPeriod, shift=1)
-//     qua thap (0 < er < 0.1, thi truong di giang co/kem hieu qua) - khong can cho M5 xac
+//     qua thap (0 < er < 0.05, thi truong di giang co/kem hieu qua) - khong can cho M5 xac
 //     nhan, tranh gong lai khi trend da thuc chat "chet" nhung Coral M5 chua kip doi mau.
 //     M5 cham hon M1 nen lenh khong bi nhieu ngan han da ra; xau nhat la SL o entry an
 //     truoc, hoa von.
 void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
 {
    double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   bool   weakEr = (er > 0 && er < 0.1);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.1 = qua kem hieu qua
+   bool   weakEr = (er > 0 && er < 0.05);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.05 = qua kem hieu qua
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -1208,7 +1208,7 @@ void ManageOpenPositions(int s)
 //      luoc do, khong xet lai/lo tung lenh.
 //    - EXIT_PER_POSITION_M1_M5 (MF_03): xet tung lenh rieng - chua breakeven -> thoat theo
 //      M1 (cat lo som); da breakeven -> thoat theo M5 (gong lai, tranh nhieu M1) HOAC khi ER
-//      hien tai qua thap (0<er<0.1, xem ExitPositionsOnReversal) - khong can cho M5 xac nhan.
+//      hien tai qua thap (0<er<0.05, xem ExitPositionsOnReversal) - khong can cho M5 xac nhan.
 //    - EXIT_STREAK_GUARDED_CLOSE_ALL (MF_05, CloseReversedPositions): giong dieu kien kich
 //      hoat cua EXIT_LEGACY_CLOSE_ALL (M1 dao chieu nguoc previousPosition), nhung xet tung
 //      lenh rieng: lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry, KHONG dung
@@ -1257,10 +1257,10 @@ void ManageOpenPositions(int s)
 //      ER hien tai tai shift=1) va erK (ERRank, xep hang ER hien tai so voi InpERLookback=300
 //      gia tri ER qua khu). CHUA dung de loc tin hieu vao lenh (input InpERRank chung chua
 //      duoc tham chieu o dau khac).
-//    - Trong ExitPositionsOnReversal (MF_03, lenh da breakeven): dung them er (0<er<0.1) lam
+//    - Trong ExitPositionsOnReversal (MF_03, lenh da breakeven): dung them er (0<er<0.05) lam
 //      dieu kien thoat som song song voi tin hieu M5 (xem muc 2).
 //    - Canh bao sideway (NotifySidewayMarket, goi trong OnTick moi nen M1 moi, 1 lan duy
-//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.1 thi gui Telegram (ATR + erK + er),
+//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.05 thi gui Telegram (ATR + erK + er),
 //      toi da 1 lan moi InpSidewayNotifyCooldown giay (mac dinh 1800s = 30 phut,
 //      g_lastSidewayNotifyTime) - khong anh huong toi viec vao/dong lenh cua bat ky chien
 //      luoc nao.
