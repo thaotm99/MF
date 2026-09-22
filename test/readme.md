@@ -111,7 +111,7 @@ File: `tricoral-multi-timeframe-ea-MF02-27082026.mq5`
   SELL cần thêm `rsi < SMA45(rsi)`.
 - Mục đích: lọc bớt tín hiệu Coral "yếu" bằng cách yêu cầu RSI cũng đồng thuận hướng.
 
-### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 hoặc ER thấp khi đã hoà vốn)
+### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 khi đã hoà vốn)
 
 File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
 
@@ -123,11 +123,8 @@ File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
   breakeven hay chưa (`IsPositionAtBreakeven` — SL đã kéo về entry chưa):
   - **Chưa breakeven** (còn rủi ro): xét Coral **M1** — M1 đảo ngược hướng lệnh là đóng ngay
     → cắt lỗ sớm.
-  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, đóng
-    khi Coral **M5** đảo ngược hướng **HOẶC** khi Efficiency Ratio hiện tại
-    (`EfficiencyRatio(InpERtf, InpERPeriod, 1)`) quá thấp (`0 < er < 0.1`, thị trường đi
-    giằng co/kém hiệu quả) — không cần chờ M5 xác nhận, tránh gồng lãi khi trend đã thực
-    chất "chết" nhưng Coral M5 chưa kịp đổi màu. M5 chậm hơn M1 nên lệnh không bị nhiễu ngắn
+  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, chỉ
+    đóng khi Coral **M5** đảo ngược hướng lệnh. M5 chậm hơn M1 nên lệnh không bị nhiễu ngắn
     hạn đá ra sớm; xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
 - **Trailing** (`TrailingStop`, chỉ 1 giai đoạn breakeven): kéo SL về entry khi lãi đủ
   `InpTrailDistance` rồi **dừng lại**, không bám tiếp SL theo giá như MF_01 — vì việc "gồng

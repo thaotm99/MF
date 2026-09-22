@@ -3,7 +3,7 @@
 
 // Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) - la ma
 // chien luoc, dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition,
-// KHONG thay the. Comment day du dang "MF_01, A: x.x, ek: x.xx, er: x.xx" (xem OpenOrder)
+// KHONG thay the. Comment day du dang "MF_01,A: x.x,ek: x.xx,er: x.xx" (xem OpenOrder)
 #define BOT_COMMENT_PREFIX "MF_01"
 
 //=============================================================================
@@ -418,7 +418,7 @@ void OpenOrder(int orderType, int shift)
    string erKStr = DoubleToString(erK, 2);
    string erStr  = DoubleToString(er, 2);
 
-   string orderComment = BOT_COMMENT_PREFIX + ", A: " + DoubleToString(atr, 1) + ", ek: " + erKStr + ", er: " + erStr;
+   string orderComment = BOT_COMMENT_PREFIX + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -733,7 +733,7 @@ void NotifySidewayMarket()
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
 //
 // 6. Phân tách lệnh bot / lệnh thủ công: mọi lệnh bot mở đều được gán InpMagicNumber
-//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_01, A: x.x, ek: x.xx,
+//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_01,A: x.x,ek: x.xx,
 //    er: x.xx" (BOT_COMMENT_PREFIX = "MF_01", xem OpenOrder). Mọi thao tác trail/đóng lệnh
 //    đều đi qua IsBotPosition() để chỉ đụng tới lệnh có magic này VÀ comment bắt đầu bằng
 //    "MF_01", không đụng vào lệnh thủ công.

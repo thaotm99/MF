@@ -3,7 +3,7 @@
 
 // Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) - la ma
 // chien luoc, dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition,
-// KHONG thay the. Comment day du dang "MF_03, A: x.x, ek: x.xx, er: x.xx" (xem OpenOrder)
+// KHONG thay the. Comment day du dang "MF_03,A: x.x,ek: x.xx,er: x.xx" (xem OpenOrder)
 #define BOT_COMMENT_PREFIX "MF_03"
 
 //=============================================================================
@@ -414,7 +414,7 @@ void OpenOrder(int orderType, int shift)
    string erKStr = DoubleToString(erK, 2);
    string erStr  = DoubleToString(er, 2);
 
-   string orderComment = BOT_COMMENT_PREFIX + ", A: " + DoubleToString(atr, 1) + ", ek: " + erKStr + ", er: " + erStr;
+   string orderComment = BOT_COMMENT_PREFIX + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -571,21 +571,14 @@ double CalcOrderVolume(bool isBuy)
 // Thoát lệnh khi Coral đảo chiều ngược hướng lệnh. Khung thời gian dùng để xét đảo chiều
 // phụ thuộc trạng thái của TỪNG lệnh:
 //   - Lệnh CHƯA breakeven (SL chưa về entry): xét Coral M1 -> thoát nhanh, cắt lỗ sớm.
-//   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, thoát khi Coral M5 đảo chiều
-//     HOẶC khi Efficiency Ratio hiện tại (InpERtf/InpERPeriod, shift=1) quá thấp
-//     (0 < er < 0.05, thị trường đi giằng co/kém hiệu quả) - không cần chờ M5 xác nhận mới
-//     thoát, tránh gồng lãi khi trend đã thực chất "chết" dù Coral M5 chưa kịp đổi màu.
-//     M5 chậm hơn M1 nên lệnh không bị đá ra bởi nhiễu ngắn hạn; xấu nhất là SL ở entry ăn
-//     trước, hòa vốn.
+//   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, chỉ thoát khi Coral M5 đảo
+//     chiều ngược hướng lệnh.
 void ExitPositionsOnReversal(int shift)
 {
    bool upM1   = IsCoralUp(PERIOD_M1, shift);
    bool downM1 = IsCoralDown(PERIOD_M1, shift);
    bool upM5   = IsCoralUp(PERIOD_M5, shift);
    bool downM5 = IsCoralDown(PERIOD_M5, shift);
-
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   bool   weakEr = (er > 0 && er < 0.05);   // -1.0 = khong tinh duoc (loai boi er>0), 0<er<0.05 = qua kem hieu qua
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -601,13 +594,12 @@ void ExitPositionsOnReversal(int shift)
       double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
       double slNow       = PositionGetDouble(POSITION_SL);
 
-      // da breakeven -> gong lai, thoat khi M5 dao chieu HOAC ER qua thap; chua breakeven ->
-      // giu hanh vi cu (M1)
-      bool   reversed  = atBreakeven ? (m5Reversed || weakEr) : (isBuy ? downM1 : upM1);
-      string tfName    = !atBreakeven ? "M1" : (m5Reversed ? "M5" : "ER thap (" + DoubleToString(er, 2) + ")");
+      // da breakeven -> gong lai, chi thoat khi M5 dao chieu; chua breakeven -> giu hanh vi cu (M1)
+      bool   reversed  = atBreakeven ? m5Reversed : (isBuy ? downM1 : upM1);
+      string tfName    = !atBreakeven ? "M1" : "M5";
 
       Print("ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-            ": atBreakeven=", atBreakeven, " er=", DoubleToString(er, 2), " -> xet dao chieu tren ", tfName,
+            ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
             ", reversed=", reversed);
 
       if(!reversed) continue;
@@ -765,10 +757,7 @@ void NotifySidewayMarket()
 //      - CHƯA breakeven (còn đang rủi ro): xét Coral M1. M1 đảo ngược hướng lệnh là đóng
 //        ngay -> thoát nhanh, cắt lỗ sớm, giữ nguyên hành vi cũ.
 //      - ĐÃ breakeven (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, BỎ QUA tín hiệu đảo
-//        chiều M1, đóng khi Coral M5 đảo ngược hướng lệnh HOẶC khi Efficiency Ratio hiện tại
-//        (EfficiencyRatio(InpERtf, InpERPeriod, 1)) quá thấp (0 < er < 0.05, thị trường đi
-//        giằng co/kém hiệu quả) - không cần chờ M5 xác nhận, tránh gồng lãi khi trend đã
-//        thực chất "chết" nhưng Coral M5 chưa kịp đổi màu. M5 chậm hơn nên lệnh không bị
+//        chiều M1, chỉ đóng khi Coral M5 đảo ngược hướng lệnh. M5 chậm hơn nên lệnh không bị
 //        nhiễu M1 đá ra sớm, để lãi chạy tiếp; nếu giá quay đầu thật thì xấu nhất là chạm SL
 //        ở entry -> hòa vốn.
 //    Lưu ý: tín hiệu đảo chiều đọc ở shift=1 (nến đã đóng) trên cả M1 lẫn M5, tránh
@@ -793,7 +782,7 @@ void NotifySidewayMarket()
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
 //
 // 6. Phân tách lệnh bot / lệnh thủ công: mọi lệnh bot mở đều được gán InpMagicNumber
-//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_03, A: x.x, ek: x.xx,
+//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_03,A: x.x,ek: x.xx,
 //    er: x.xx" (BOT_COMMENT_PREFIX = "MF_03", xem OpenOrder). Mọi thao tác trail/đóng lệnh
 //    đều đi qua IsBotPosition() để chỉ đụng tới lệnh có magic này VÀ comment bắt đầu bằng
 //    "MF_03", không đụng vào lệnh thủ công.
@@ -826,8 +815,6 @@ void NotifySidewayMarket()
 //       Telegram khi mở lệnh - er (EfficiencyRatio, ER hiện tại tại shift=1) và erK (ERRank,
 //       xếp hạng ER hiện tại so với InpERLookback=300 giá trị ER quá khứ). CHƯA dùng để lọc
 //       tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
-//     - Trong ExitPositionsOnReversal (lệnh đã breakeven): dùng thêm er (0 < er < 0.05) làm
-//       điều kiện thoát sớm song song với tín hiệu M5 (xem mục 2).
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
 //       0 < er < 0.05 thì gửi Telegram (ATR + erK + er), tối đa 1 lần mỗi
 //       InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút, g_lastSidewayNotifyTime) -

@@ -1,22 +1,18 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// EA gop 5 chien luoc Tricoral (MF_01..MF_05) vao 1 file. Moi chien luoc la 1 "config"
+// EA gop 2 chien luoc Tricoral (MF_01, MF_02) vao 1 file. Moi chien luoc la 1 "config"
 // bat/tat doc lap qua Inp<MaCode>_Enabled, co magic + volume + comment rieng, chay dong
 // thoi tren cung symbol khong dung nhau. Nguon goc tung chien luoc:
 //   MF_01 <- mt5/releases/tricoral-multi-timeframe-ea-MF01.mq5
 //   MF_02 <- test/tricoral-multi-timeframe-ea-MF02-27082026.mq5   (+ RSI/SMA filter)
-//   MF_03 <- test/tricoral-multi-timeframe-ea-MF03-290826.mq5     (thoat theo tung lenh M1/M5, trailing chi breakeven)
-//   MF_04 <- test/tricoral-multi-timeframe-ea-MF04-150926.mq5     (= MF_01 nhung khong trailing)
-//   MF_05 <- test/tricoral-multi-timeframe-ea-MF05-170926.mq5     (= MF_01 nhung dong lenh dao chieu co dieu kien:
-//            lenh lai dong ngay, lenh lo chi dong khi da co chuoi >= N deal dong gan nhat cung huong)
 //
 // LUU Y TRIEN KHAI: neu tai khoan dang co lenh mo tu ban EA rieng le cu (comment "ATR : x.x"),
 // EA nay se KHONG nhan dien duoc cac lenh do (comment prefix da doi thanh ma chien luoc,
 // vd "MF_01"). Nen dong het lenh bot cu truoc khi thay EA.
 
 //=============================================================================
-// INPUTS (dung chung cho ca 5 chien luoc)
+// INPUTS (dung chung cho ca 2 chien luoc)
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
@@ -28,14 +24,14 @@ input int    InpTrailModifyCooldown = 2;    // Giay toi thieu giua 2 lan THUC SU
 
 //=============================================================================
 // INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, dung chung
-// ca 5 chien luoc; chi de tinh/hien thi/gui Telegram + ghi vao comment lenh, CHUA dung de
+// ca 2 chien luoc; chi de tinh/hien thi/gui Telegram + ghi vao comment lenh, CHUA dung de
 // loc tin hieu vao lenh)
 //=============================================================================
 input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency Ratio
 input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
 input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
 input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
-input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram, dung chung ca 5 chien luoc
+input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram, dung chung ca 2 chien luoc
 
 //=============================================================================
 // MF_01 - Coral 3TF thuan, dong het lenh bot khi M1 dao chieu, trailing 2 giai doan
@@ -69,90 +65,26 @@ input int    InpMF02_MaFast              = 9;    // SMA nhanh cua RSI ("ema9") -
 input int    InpMF02_MaSlow              = 45;   // SMA cham cua RSI ("ema45") - thuc chat la SMA, khong phai EMA that
 
 //=============================================================================
-// MF_03 - Coral 3TF thuan, thoat theo TUNG lenh (chua breakeven->M1, da breakeven->M5), trailing chi breakeven
-//=============================================================================
-input group "=== MF_03 ==="
-input bool   InpMF03_Enabled             = true;
-input long   InpMF03_Magic               = 20250808;
-input double InpMF03_VolMultiplier       = 1;
-input double InpMF03_SlSpacingDistance   = 8;
-input double InpMF03_TakeProfitDistance  = 50;
-input double InpMF03_TrailDistance       = 10;
-input double InpMF03_DailyMaxLoss        = 40;
-input double InpMF03_DailyMaxProfit      = 200;
-input double InpMF03_TimeWindowMaxProfit = 70;
-
-//=============================================================================
-// MF_04 - Coral 3TF thuan, dong het lenh bot khi M1 dao chieu, KHONG trailing (chi SL/TP co dinh)
-//=============================================================================
-input group "=== MF_04 ==="
-input bool   InpMF04_Enabled             = true;
-input long   InpMF04_Magic               = 20250809;
-input double InpMF04_VolMultiplier       = 1;
-input double InpMF04_SlSpacingDistance   = 8;
-input double InpMF04_TakeProfitDistance  = 50;
-input double InpMF04_DailyMaxLoss        = 40;
-input double InpMF04_DailyMaxProfit      = 100;
-input double InpMF04_TimeWindowMaxProfit = 30;
-
-//=============================================================================
-// MF_05 - Coral 3TF thuan, trailing 2 giai doan (= MF_01); dao chieu KHONG dong het lenh
-// ngay: lenh lai dong ngay, lenh lo chi dong khi da co >= HoldStreakCount deal dong gan
-// nhat cung huong (con trong N lenh dau cua 1 chuoi moi thi giu lenh du dang lo)
-//=============================================================================
-input group "=== MF_05 ==="
-input bool   InpMF05_Enabled             = true;
-input long   InpMF05_Magic               = 20250810;
-input double InpMF05_VolMultiplier       = 1;
-input double InpMF05_SlSpacingDistance   = 8;
-input double InpMF05_TakeProfitDistance  = 50;
-input double InpMF05_TrailDistance       = 10;
-input double InpMF05_DailyMaxLoss        = 40;
-input double InpMF05_DailyMaxProfit      = 100;
-input double InpMF05_TimeWindowMaxProfit = 30;
-input int    InpMF05_HoldStreakCount     = 5;    // So deal dong gan nhat can cung huong lenh dang lo de xac nhan dong
-
-//=============================================================================
 // STRATEGY CONFIG
 //=============================================================================
-enum ENUM_TRAIL_MODE
-{
-   TRAIL_NONE,            // khong trailing, giu nguyen SL/TP co dinh luc vao lenh (MF_04)
-   TRAIL_BREAKEVEN_ONLY,  // chi keo SL ve entry roi dung (MF_03)
-   TRAIL_TWO_STAGE        // breakeven roi tiep tuc bam SL theo trailDistance (MF_01/MF_02)
-};
-
-enum ENUM_EXIT_MODE
-{
-   EXIT_LEGACY_CLOSE_ALL,          // dong HET lenh bot khi M1 dao chieu nguoc position gan nhat (MF_01/MF_02/MF_04)
-   EXIT_PER_POSITION_M1_M5,        // xet tung lenh: chua breakeven->M1, da breakeven->M5 (MF_03)
-   EXIT_STREAK_GUARDED_CLOSE_ALL   // M1 dao chieu nguoc position gan nhat: xet tung lenh, lai dong ngay,
-                                   // lo chi dong khi da co chuoi deal dong gan nhat cung huong (MF_05)
-};
-
 struct StrategyConfig
 {
-   string          code;                 // "MF_01".."MF_04" - dung lam prefix comment lenh
+   string          code;                 // "MF_01"/"MF_02" - dung lam prefix comment lenh
    bool            enabled;
    long            magic;
    double          volMultiplier;        // he so nhan vol (min_lot * he so); dong thoi nhan vao nguong daily/time-window
    bool            useRsiFilter;
-   ENUM_EXIT_MODE  exitMode;
-   ENUM_TRAIL_MODE trailMode;
    double          slSpacingDistance;
    double          takeProfitDistance;
-   double          trailDistance;        // khong dung khi trailMode == TRAIL_NONE
+   double          trailDistance;
    double          dailyMaxLoss;
    double          dailyMaxProfit;
    double          timeWindowMaxProfit;
-   int             holdStreakCount;      // so deal dong gan nhat can cung huong de xac nhan dong lenh dang lo
-                                          // - chi dung khi exitMode == EXIT_STREAK_GUARDED_CLOSE_ALL
    // runtime state:
-   string          previousPosition;     // "NONE"/"LONG"/"SHORT" - dung khi exitMode == EXIT_LEGACY_CLOSE_ALL
-                                          // hoac EXIT_STREAK_GUARDED_CLOSE_ALL
+   string          previousPosition;     // "NONE"/"LONG"/"SHORT"
 };
 
-StrategyConfig g_strategies[5];
+StrategyConfig g_strategies[2];
 
 //=============================================================================
 // GLOBALS
@@ -180,15 +112,12 @@ void BuildStrategies()
    g_strategies[0].magic               = InpMF01_Magic;
    g_strategies[0].volMultiplier       = InpMF01_VolMultiplier;
    g_strategies[0].useRsiFilter        = false;
-   g_strategies[0].exitMode            = EXIT_LEGACY_CLOSE_ALL;
-   g_strategies[0].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[0].slSpacingDistance   = InpMF01_SlSpacingDistance;
    g_strategies[0].takeProfitDistance  = InpMF01_TakeProfitDistance;
    g_strategies[0].trailDistance       = InpMF01_TrailDistance;
    g_strategies[0].dailyMaxLoss        = InpMF01_DailyMaxLoss;
    g_strategies[0].dailyMaxProfit      = InpMF01_DailyMaxProfit;
    g_strategies[0].timeWindowMaxProfit = InpMF01_TimeWindowMaxProfit;
-   g_strategies[0].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
    g_strategies[0].previousPosition    = "NONE";
 
    g_strategies[1].code                = "MF_02";
@@ -196,67 +125,16 @@ void BuildStrategies()
    g_strategies[1].magic               = InpMF02_Magic;
    g_strategies[1].volMultiplier       = InpMF02_VolMultiplier;
    g_strategies[1].useRsiFilter        = true;
-   g_strategies[1].exitMode            = EXIT_LEGACY_CLOSE_ALL;
-   g_strategies[1].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[1].slSpacingDistance   = InpMF02_SlSpacingDistance;
    g_strategies[1].takeProfitDistance  = InpMF02_TakeProfitDistance;
    g_strategies[1].trailDistance       = InpMF02_TrailDistance;
    g_strategies[1].dailyMaxLoss        = InpMF02_DailyMaxLoss;
    g_strategies[1].dailyMaxProfit      = InpMF02_DailyMaxProfit;
    g_strategies[1].timeWindowMaxProfit = InpMF02_TimeWindowMaxProfit;
-   g_strategies[1].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
    g_strategies[1].previousPosition    = "NONE";
-
-   g_strategies[2].code                = "MF_03";
-   g_strategies[2].enabled             = InpMF03_Enabled;
-   g_strategies[2].magic               = InpMF03_Magic;
-   g_strategies[2].volMultiplier       = InpMF03_VolMultiplier;
-   g_strategies[2].useRsiFilter        = false;
-   g_strategies[2].exitMode            = EXIT_PER_POSITION_M1_M5;
-   g_strategies[2].trailMode           = TRAIL_BREAKEVEN_ONLY;
-   g_strategies[2].slSpacingDistance   = InpMF03_SlSpacingDistance;
-   g_strategies[2].takeProfitDistance  = InpMF03_TakeProfitDistance;
-   g_strategies[2].trailDistance       = InpMF03_TrailDistance;
-   g_strategies[2].dailyMaxLoss        = InpMF03_DailyMaxLoss;
-   g_strategies[2].dailyMaxProfit      = InpMF03_DailyMaxProfit;
-   g_strategies[2].timeWindowMaxProfit = InpMF03_TimeWindowMaxProfit;
-   g_strategies[2].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
-   g_strategies[2].previousPosition    = "NONE"; // khong dung (exitMode khac LEGACY), khoi tao cho sach
-
-   g_strategies[3].code                = "MF_04";
-   g_strategies[3].enabled             = InpMF04_Enabled;
-   g_strategies[3].magic               = InpMF04_Magic;
-   g_strategies[3].volMultiplier       = InpMF04_VolMultiplier;
-   g_strategies[3].useRsiFilter        = false;
-   g_strategies[3].exitMode            = EXIT_LEGACY_CLOSE_ALL;
-   g_strategies[3].trailMode           = TRAIL_NONE;
-   g_strategies[3].slSpacingDistance   = InpMF04_SlSpacingDistance;
-   g_strategies[3].takeProfitDistance  = InpMF04_TakeProfitDistance;
-   g_strategies[3].trailDistance       = 0; // khong dung, trailMode == TRAIL_NONE
-   g_strategies[3].dailyMaxLoss        = InpMF04_DailyMaxLoss;
-   g_strategies[3].dailyMaxProfit      = InpMF04_DailyMaxProfit;
-   g_strategies[3].timeWindowMaxProfit = InpMF04_TimeWindowMaxProfit;
-   g_strategies[3].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
-   g_strategies[3].previousPosition    = "NONE";
-
-   g_strategies[4].code                = "MF_05";
-   g_strategies[4].enabled             = InpMF05_Enabled;
-   g_strategies[4].magic               = InpMF05_Magic;
-   g_strategies[4].volMultiplier       = InpMF05_VolMultiplier;
-   g_strategies[4].useRsiFilter        = false;
-   g_strategies[4].exitMode            = EXIT_STREAK_GUARDED_CLOSE_ALL;
-   g_strategies[4].trailMode           = TRAIL_TWO_STAGE;
-   g_strategies[4].slSpacingDistance   = InpMF05_SlSpacingDistance;
-   g_strategies[4].takeProfitDistance  = InpMF05_TakeProfitDistance;
-   g_strategies[4].trailDistance       = InpMF05_TrailDistance;
-   g_strategies[4].dailyMaxLoss        = InpMF05_DailyMaxLoss;
-   g_strategies[4].dailyMaxProfit      = InpMF05_DailyMaxProfit;
-   g_strategies[4].timeWindowMaxProfit = InpMF05_TimeWindowMaxProfit;
-   g_strategies[4].holdStreakCount     = InpMF05_HoldStreakCount;
-   g_strategies[4].previousPosition    = "NONE";
 }
 
-// Khoi tao EA: setup CTrade, tao handle chi bao dung chung (ATR/ADX/RSI/Coral M1-M5-M15), do config 5 chien luoc
+// Khoi tao EA: setup CTrade, tao handle chi bao dung chung (ATR/ADX/RSI/Coral M1-M5-M15), do config 2 chien luoc
 int OnInit()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) { Print("Auto trading is disabled in terminal - EA init aborted"); return 0; }
@@ -375,7 +253,7 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
 }
 
 //=============================================================================
-// CORAL SNAPSHOT (doc 1 lan/tick moi, dung chung cho ca 5 chien luoc)
+// CORAL SNAPSHOT (doc 1 lan/tick moi, dung chung cho ca 2 chien luoc)
 //=============================================================================
 struct CoralSnapshot
 {
@@ -427,7 +305,7 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 // EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
 // voi tong quang duong di cua gia (path) trong "period" nen gan nhat. ER cang gan 1 nghia
 // la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
-// Dung chung ca 5 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
+// Dung chung ca 2 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
 //=============================================================================
 // Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15).
 // Tra ve -1.0 neu tham so khong hop le (period<2, shift<0) hoac khong du du lieu/gia di
@@ -565,26 +443,13 @@ void OnTick()
 //=============================================================================
 // SIGNAL
 //=============================================================================
-// Xu ly tin hieu cho 1 chien luoc: thoat lenh dao chieu theo exitMode, sau do mo lenh moi
-// khi Coral 3TF dong thuan (+ RSI filter neu useRsiFilter)
+// Xu ly tin hieu cho 1 chien luoc: dong het lenh khi M1 dao chieu nguoc position gan nhat,
+// sau do mo lenh moi khi Coral 3TF dong thuan (+ RSI filter neu useRsiFilter)
 void ProcessStrategySignal(int s, int shift, const CoralSnapshot &snap)
 {
-   if(g_strategies[s].exitMode == EXIT_LEGACY_CLOSE_ALL)
-   {
-      bool reversedAgainstPosition = (g_strategies[s].previousPosition == "SHORT" && snap.upNow) ||
-                                      (g_strategies[s].previousPosition == "LONG"  && snap.downNow);
-      if(reversedAgainstPosition) CloseAllPositions(s);
-   }
-   else if(g_strategies[s].exitMode == EXIT_STREAK_GUARDED_CLOSE_ALL)
-   {
-      bool reversedAgainstPosition = (g_strategies[s].previousPosition == "SHORT" && snap.upNow) ||
-                                      (g_strategies[s].previousPosition == "LONG"  && snap.downNow);
-      if(reversedAgainstPosition) CloseReversedPositions(s, snap.upNow, snap.downNow);
-   }
-   else
-   {
-      ExitPositionsOnReversal(s, snap);
-   }
+   bool reversedAgainstPosition = (g_strategies[s].previousPosition == "SHORT" && snap.upNow) ||
+                                   (g_strategies[s].previousPosition == "LONG"  && snap.downNow);
+   if(reversedAgainstPosition) CloseAllPositions(s);
 
    bool buySignal  = (snap.upNow   && !snap.upPrev   && snap.upM5   && snap.upM15);
    bool sellSignal = (snap.downNow && !snap.downPrev && snap.downM5 && snap.downM15);
@@ -816,20 +681,8 @@ bool StopsLevelOk(bool isBuy, double newSL, double bidNow, double askNow, double
    return isBuy ? (bidNow - newSL >= minStop) : (newSL - askNow >= minStop);
 }
 
-// Lenh dang chon da duoc keo SL ve entry (breakeven) hay chua. Goi sau khi da
-// PositionSelect / PositionSelectByTicket.
-bool IsPositionAtBreakeven()
-{
-   double sl    = PositionGetDouble(POSITION_SL);
-   double entry = PositionGetDouble(POSITION_PRICE_OPEN);
-   bool   isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
-
-   if(sl == 0) return false;
-   return isBuy ? (sl >= entry) : (sl <= entry);
-}
-
 // Gui thong bao Telegram khi trail SL, chong spam bang InpTrailNotifyStep/InpTrailNotifyCooldown
-// (dung chung 1 bo dem cho ca 5 chien luoc, giong hanh vi ban goc)
+// (dung chung 1 bo dem cho ca 2 chien luoc, giong hanh vi ban goc)
 void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double oldSl, double newSL)
 {
    bool bigMove   = MathAbs(newSL - g_lastNotifiedSL) >= InpTrailNotifyStep;
@@ -850,15 +703,10 @@ void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double o
    }
 }
 
-// Dispatch trailing theo trailMode cua chien luoc s
+// Ca 2 chien luoc con lai (MF_01/MF_02) deu dung trailing 2 giai doan
 void TrailingStop(int s, ulong ticket)
 {
-   switch(g_strategies[s].trailMode)
-   {
-      case TRAIL_TWO_STAGE:      TrailingStopTwoStage(s, ticket);      break;
-      case TRAIL_BREAKEVEN_ONLY: TrailingStopBreakevenOnly(s, ticket); break;
-      case TRAIL_NONE:           break; // khong lam gi, giu nguyen SL/TP co dinh
-   }
+   TrailingStopTwoStage(s, ticket);
 }
 
 // Trail 2 giai doan (MF_01/MF_02): giai doan 1 keo SL ve entry (breakeven) khi lai du
@@ -954,131 +802,9 @@ void TrailingStopTwoStage(int s, ulong ticket)
    NotifyTrailing(s, ticket, isBuy, entryPrice, sl, newSL);
 }
 
-// Trail chi breakeven (MF_03): keo SL ve entry khi lai du trailDistance roi dung, khong
-// bam SL them nua - viec "gong lai" sau breakeven chuyen sang ExitPositionsOnReversal (nghe M5)
-void TrailingStopBreakevenOnly(int s, ulong ticket)
-{
-   if(!PositionSelectByTicket(ticket)) return;
-   if(!IsBotPosition(s)) return;
-
-   double sl         = PositionGetDouble(POSITION_SL);
-   double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-   bool   isBuy      = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
-   string symbol     = PositionGetString(POSITION_SYMBOL);
-
-   double bidNow = SymbolInfoDouble(symbol, SYMBOL_BID);
-   double askNow = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   double price  = isBuy ? bidNow : askNow;
-
-   int    digits  = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   double minStop = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
-
-   double profitDist       = isBuy ? (price - entryPrice) : (entryPrice - price);
-   bool   slAtOrAboveEntry = IsPositionAtBreakeven();
-   double trailDistance    = g_strategies[s].trailDistance;
-
-   Print(g_strategies[s].code, " TrailingStop #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-         ": entry=", DoubleToString(entryPrice, digits), " sl=", DoubleToString(sl, digits),
-         " price=", DoubleToString(price, digits), " profitDist=", DoubleToString(profitDist, digits),
-         " slAtOrAboveEntry=", slAtOrAboveEntry);
-
-   if(slAtOrAboveEntry)
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL da o entry (breakeven), khong trail them");
-      return;
-   }
-
-   if(profitDist < trailDistance)
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": not enough profit yet, skip (profitDist < trailDistance)");
-      return;
-   }
-
-   double newSL = NormalizeDouble(entryPrice, digits);
-   Print(g_strategies[s].code, " TrailingStop #", ticket, ": breakeven -> candidate newSL=", DoubleToString(newSL, digits));
-
-   bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
-                              : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
-   if(worseOrEqual)
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - newSL not better than current SL");
-      return;
-   }
-
-   if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
-      return;
-   }
-
-   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
-   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
-      return;
-   }
-
-   if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": PositionModify failed, error code: ", GetLastError());
-      return;
-   }
-
-   g_lastModifyTime = TimeCurrent();
-   Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
-   NotifyTrailing(s, ticket, isBuy, entryPrice, sl, newSL);
-}
-
-//=============================================================================
-// EXIT ON REVERSAL (MF_03 - EXIT_PER_POSITION_M1_M5)
-//=============================================================================
-// Thoat lenh khi Coral dao chieu nguoc huong lenh, xet rieng tung lenh cua chien luoc s:
-//   - Lenh CHUA breakeven (SL chua ve entry): xet Coral M1 -> thoat nhanh, cat lo som.
-//   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, chi thoat khi Coral M5 dao
-//     nguoc huong lenh.
-void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(!PositionSelectByTicket(ticket)) continue;
-      if(!IsBotPosition(s)) continue;
-
-      bool isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
-      bool atBreakeven = IsPositionAtBreakeven();
-      bool m5Reversed  = isBuy ? snap.downM5 : snap.upM5;
-      // doc truoc khi close - sau khi close position khong con select duoc nua
-      double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
-      double slNow       = PositionGetDouble(POSITION_SL);
-
-      // da breakeven -> gong lai, chi thoat khi M5 dao chieu; chua breakeven -> giu hanh vi cu (M1)
-      bool   reversed = atBreakeven ? m5Reversed : (isBuy ? snap.downNow : snap.upNow);
-      string tfName   = !atBreakeven ? "M1" : "M5";
-
-      Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-            ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
-            ", reversed=", reversed);
-
-      if(!reversed) continue;
-
-      if(!trade.PositionClose(ticket))
-      {
-         Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, ": close failed, error code: ", GetLastError());
-         ResetLastError();
-         continue;
-      }
-
-      Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, ": closed - ", tfName, " dao chieu");
-      SendTelegram(TelegramMsg(g_strategies[s].code + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
-         DoubleToString(entryPrice, 2), DoubleToString(slNow, 2),
-         (atBreakeven ? "gong lai" : "chua breakeven"), "-", "-"));
-   }
-}
-
 // Dong tat ca lenh dang mo cua chien luoc s (theo magic), giu nguyen lenh cua chien luoc
-// khac / lenh thu cong. Dung boi EXIT_LEGACY_CLOSE_ALL (MF_01/MF_02/MF_04); voi MF_03 ham
-// nay khong nam trong luong chinh, chi con la tien ich dong khan cap toan bo lenh chien luoc.
+// khac / lenh thu cong. Dung khi M1 dao chieu nguoc position gan nhat (xem reversedAgainstPosition
+// trong ProcessStrategySignal).
 void CloseAllPositions(int s)
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -1087,80 +813,6 @@ void CloseAllPositions(int s)
       if(ticket == 0) continue;
       if(!PositionSelectByTicket(ticket)) continue;
       if(!IsBotPosition(s)) continue;
-
-      if(!trade.PositionClose(ticket))
-         { Print(g_strategies[s].code, " Failed to close bot position, ticket=", ticket, ", error code: ", GetLastError()); ResetLastError(); }
-      else
-         Print(g_strategies[s].code, " Bot position closed, ticket=", ticket);
-   }
-}
-
-//=============================================================================
-// EXIT ON REVERSAL - DONG CO DIEU KIEN LAI/LO (EXIT_STREAK_GUARDED_CLOSE_ALL - MF_05)
-//=============================================================================
-// Kiem tra holdStreakCount deal dong gan nhat (DEAL_ENTRY_OUT, loc theo magic chien luoc s)
-// co CUNG huong voi isBuy khong. Chi 1 deal khac huong xen vao la coi nhu chuoi bi "cat",
-// tra ve false ngay. Chua du holdStreakCount deal trong lich su cung tra ve false (chua du
-// dieu kien dong).
-bool LastClosedDealsSameDirection(int s, bool isBuy, int count)
-{
-   if(!HistorySelect(0, TimeCurrent())) return false;
-
-   int totalDeals = HistoryDealsTotal();
-   int matched = 0;
-   for(int i = totalDeals - 1; i >= 0 && matched < count; i--)
-   {
-      ulong dealTicket = HistoryDealGetTicket(i);
-      if(dealTicket == 0) continue;
-      if(HistoryDealGetString(dealTicket, DEAL_SYMBOL) != _Symbol) continue;
-      if(HistoryDealGetInteger(dealTicket, DEAL_MAGIC) != g_strategies[s].magic) continue;
-      if(HistoryDealGetInteger(dealTicket, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
-
-      // Deal dong 1 lenh BUY luon co DEAL_TYPE = DEAL_TYPE_SELL (va nguoc lai)
-      bool closedBuyPosition = (HistoryDealGetInteger(dealTicket, DEAL_TYPE) == DEAL_TYPE_SELL);
-      if(closedBuyPosition != isBuy) return false;
-
-      matched++;
-   }
-
-   return (matched >= count);
-}
-
-// Dong lenh cua chien luoc s (theo magic) ngược huong voi trend Coral M1 hien tai
-// (upNow/downNow), giu nguyen lenh chien luoc khac / lenh thu cong. Voi tung lenh:
-//   - Lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry) >= khoang cach rui ro
-//     |entry - SL|: dong ngay (vd entry=4300, SL=4295 -> risk=5, phai lai >=5 gia moi dong).
-//     Dung khoang cach gia, KHONG dung POSITION_PROFIT ($).
-//   - Con lai (lai chua dat muc risk, ke ca dang lo): chi dong neu holdStreakCount deal dong
-//     gan nhat DEU cung huong lenh nay (LastClosedDealsSameDirection) - tuc da co 1 chuoi
-//     lenh cung huong du dai roi. Neu chuoi hien tai con trong N lenh dau (bi lenh nguoc
-//     huong "cat" truoc do), giu lenh lai vi tin hieu dao chieu co the chi la nhieu ngan han.
-void CloseReversedPositions(int s, bool upNow, bool downNow)
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(!PositionSelectByTicket(ticket)) continue;
-      if(!IsBotPosition(s)) continue;
-
-      bool isBuy    = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
-      bool reversed = isBuy ? downNow : upNow;
-      if(!reversed) continue;
-
-      double entryPrice     = PositionGetDouble(POSITION_PRICE_OPEN);
-      double slPrice        = PositionGetDouble(POSITION_SL);
-      double riskDistance   = MathAbs(entryPrice - slPrice);
-      double currentPrice   = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double profitDistance = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
-
-      if(profitDistance < riskDistance && !LastClosedDealsSameDirection(s, isBuy, g_strategies[s].holdStreakCount))
-      {
-         Print(g_strategies[s].code, " Position #", ticket, " (", (isBuy ? "BUY" : "SELL"),
-               ") lai theo gia=", DoubleToString(profitDistance, 2), " chua dat muc rui ro=", DoubleToString(riskDistance, 2),
-               " va con trong ", g_strategies[s].holdStreakCount, " lenh dau chuoi moi - giu lenh");
-         continue;
-      }
 
       if(!trade.PositionClose(ticket))
          { Print(g_strategies[s].code, " Failed to close bot position, ticket=", ticket, ", error code: ", GetLastError()); ResetLastError(); }
@@ -1183,52 +835,36 @@ void ManageOpenPositions(int s)
 
       TrailingStop(s, ticket);
 
-      if(g_strategies[s].exitMode == EXIT_LEGACY_CLOSE_ALL || g_strategies[s].exitMode == EXIT_STREAK_GUARDED_CLOSE_ALL)
-         g_strategies[s].previousPosition = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "LONG" : "SHORT";
+      g_strategies[s].previousPosition = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "LONG" : "SHORT";
    }
 }
 
 //=============================================================================
 // Y TUONG KIEN TRUC CUA EA GOP (tong quan)
 //=============================================================================
-// 1. Tin hieu vao lenh (dung chung ca 5 chien luoc): Coral 3 khung M1 (chinh)/M5/M15 (xac
+// 1. Tin hieu vao lenh (dung chung ca 2 chien luoc): Coral 3 khung M1 (chinh)/M5/M15 (xac
 //    nhan). BUY khi Coral M1 vua chuyen sang uptrend (up hien tai, khong up nen truoc) VA
 //    ca M5, M15 cung dang uptrend. Tuong tu cho SELL. MF_02 AND them dieu kien RSI(M1):
 //    rsi > SMA45(rsi) cho buy, rsi < SMA45(rsi) cho sell.
 //
-// 2. Thoat lenh khi dao chieu - 3 kieu (ENUM_EXIT_MODE):
-//    - EXIT_LEGACY_CLOSE_ALL (MF_01/MF_02/MF_04): theo doi previousPosition rieng tung
-//      chien luoc, M1 Coral dao chieu nguoc position gan nhat -> dong HET lenh cua chien
-//      luoc do, khong xet lai/lo tung lenh.
-//    - EXIT_PER_POSITION_M1_M5 (MF_03): xet tung lenh rieng - chua breakeven -> thoat theo
-//      M1 (cat lo som); da breakeven -> thoat theo M5 (gong lai, tranh nhieu M1).
-//    - EXIT_STREAK_GUARDED_CLOSE_ALL (MF_05, CloseReversedPositions): giong dieu kien kich
-//      hoat cua EXIT_LEGACY_CLOSE_ALL (M1 dao chieu nguoc previousPosition), nhung xet tung
-//      lenh rieng: lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry, KHONG dung
-//      POSITION_PROFIT $) - neu lai >= khoang cach rui ro |entry-SL| thi dong ngay (vd
-//      entry=4300, SL=4295 -> risk=5, phai lai >=5 gia); con lai (chua dat muc risk, ke ca
-//      dang lo) chi dong khi holdStreakCount deal dong gan nhat (LastClosedDealsSameDirection)
-//      DEU cung huong lenh do (da co 1 chuoi lenh cung huong du dai); neu lenh con nam trong
-//      N lenh dau cua 1 chuoi moi thi giu lenh lai, vi tin hieu dao chieu co the chi la
-//      nhieu ngan han.
+// 2. Thoat lenh khi dao chieu (ProcessStrategySignal): theo doi previousPosition rieng
+//    tung chien luoc, khi M1 Coral dao chieu nguoc position gan nhat -> dong HET lenh cua
+//    chien luoc do (CloseAllPositions), khong xet lai/lo tung lenh.
 //
 // 3. SL/TP & loc tin hieu (OpenOrder, dung chung cong thuc, tham so rieng tung chien luoc):
 //    SL theo swing gan nhat (14 nen M1), cap boi slSpacingDistance. TP co dinh cach entry
 //    takeProfitDistance. Bo qua tin hieu neu ATR M1 < 2.
 //
-// 4. Trailing stop - 3 kieu (ENUM_TRAIL_MODE): TRAIL_TWO_STAGE (MF_01/MF_02/MF_05, breakeven
-//    roi bam SL tiep theo trailDistance), TRAIL_BREAKEVEN_ONLY (MF_03, chi breakeven roi
-//    dung), TRAIL_NONE (MF_04, khong trailing, chi con SL/TP co dinh). Ca 2 ham
-//    TrailingStopTwoStage/TrailingStopBreakevenOnly chay MOI tick; de tranh spam
-//    PositionModify() len san khi gia chay lien tuc, chi THUC SU gui lenh sua SL toi da 1
-//    lan moi InpTrailModifyCooldown giay (mac dinh 2s, g_lastModifyTime dung chung moi
-//    chien luoc) - throttle nay doc lap hoan toan voi InpTrailNotifyCooldown (chi chi phoi
-//    tan suat gui Telegram).
+// 4. Trailing stop 2 giai doan (TrailingStopTwoStage, ca 2 chien luoc, chay MOI tick):
+//    breakeven roi bam SL tiep theo trailDistance. De tranh spam PositionModify() len san
+//    khi gia chay lien tuc, chi THUC SU gui lenh sua SL toi da 1 lan moi InpTrailModifyCooldown
+//    giay (mac dinh 2s, g_lastModifyTime dung chung moi chien luoc) - throttle nay doc lap
+//    hoan toan voi InpTrailNotifyCooldown (chi chi phoi tan suat gui Telegram).
 //
 // 5. Volume: vol = min lot cua symbol * volMultiplier rieng tung chien luoc (input
 //    MFxx_VolMultiplier), khong tang theo chuoi lenh.
 //
-// 6. Phan tach lenh giua 5 chien luoc & lenh thu cong: moi chien luoc co magic rieng
+// 6. Phan tach lenh giua 2 chien luoc & lenh thu cong: moi chien luoc co magic rieng
 //    (InpMFxx_Magic) + moi lenh mo deu gan comment dung bang ma chien luoc (vd "MF_01",
 //    xem orderComment trong OpenOrder). IsBotPosition(s) check ca 2 lop nay. Moi thao tac trail/dong lenh
 //    deu di qua IsBotPosition(s) de chi dung tung lenh cua dung chien luoc.
@@ -1243,7 +879,7 @@ void ManageOpenPositions(int s)
 // 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai, trail SL, thoat lenh,
 //    tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu de gan ma chien luoc.
 //
-// 9. Efficiency Ratio (dung chung ca 5 chien luoc): do "do hieu qua" cua xu huong gia tren
+// 9. Efficiency Ratio (dung chung ca 2 chien luoc): do "do hieu qua" cua xu huong gia tren
 //    khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15).
 //    - Trong OpenOrder: ghi 2 gia tri (lam tron 2 chu so thap phan) vao comment lenh dang
 //      "MF_xx,A: x.x,ek: x.xx,er: x.xx" + gui Telegram khi mo lenh - er (EfficiencyRatio,
