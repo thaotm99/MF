@@ -16,7 +16,7 @@
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
- string InpTelegramChatID        = "-1004343744850"; //  MF-01-05
+ string InpTelegramChatID        = "-5336699036"; //  MTMO
 
 input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them >= gia tri nay
 input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing (dung chung moi chien luoc)
@@ -138,6 +138,18 @@ void BuildStrategies()
 int OnInit()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) { Print("Auto trading is disabled in terminal - EA init aborted"); return 0; }
+
+   // Canh bao neu tai khoan khong o che do HEDGING: co che tach lenh theo magic+comment
+   // (IsBotPosition) chi dang tin cay tren HEDGING. Tren NETTING/EXCHANGE, cac lenh cung
+   // huong tren cung symbol bi MT5 tu dong gop lam 1 position, TP/SL cua lenh moi khong
+   // duoc ap dung rieng (giu nguyen TP/SL cua position da gop) - xem readme.md.
+   ENUM_ACCOUNT_MARGIN_MODE marginMode = (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE);
+   if(marginMode != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+   {
+      string modeStr = (marginMode == ACCOUNT_MARGIN_MODE_RETAIL_NETTING) ? "NETTING" : "EXCHANGE";
+      Print("CANH BAO: tai khoan dang o che do ", modeStr, ", khong phai HEDGING - lenh cung huong tren cung symbol se bi MT5 gop lam 1 position, TP/SL co the sai voi tung chien luoc.");
+      SendTelegram("CANH BAO: Account " + _Symbol + " dang o che do " + modeStr + " (khong phai HEDGING) - lenh cua cac chien luoc co the bi gop sai TP/SL!");
+   }
 
    g_tradeLotSize = NormalizeDouble(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), 2);
    trade.SetDeviationInPoints(500);
@@ -616,7 +628,7 @@ void OpenOrder(int s, int orderType, int shift)
    // Lam tron ATR ve 1 chu so thap phan truoc khi so sanh (vd 1.9344 -> 1.9, 1.95 -> 2.0)
    double atrRounded = NormalizeDouble(atr + 0.00001, 1);
 
-   if(atrRounded < 2)
+   if(atrRounded < 1.8)
    {
       Print(label, " signal skipped on ", _Symbol, ": ATR too low (", DoubleToString(atrRounded, 1), " < 2)");
       SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atrRounded, 1));
@@ -659,6 +671,31 @@ void OpenOrder(int s, int orderType, int shift)
 
    if(posTicket != 0 && PositionSelectByTicket(posTicket))
    {
+      // Doi chieu SL/TP thuc te tren position voi SL/TP da gui trong lenh - phat hien truong
+      // hop broker/prop firm (vd FTMO) ghi de/tu dong sua SL/TP sau khi lenh duoc mo.
+      double actualSl    = PositionGetDouble(POSITION_SL);
+      double actualTp    = PositionGetDouble(POSITION_TP);
+      bool   slMismatch  = MathAbs(actualSl - sl) > SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      bool   tpMismatch  = MathAbs(actualTp - tp) > SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+
+      if(slMismatch || tpMismatch)
+      {
+         Print(label, " CANH BAO #", posTicket, ": SL/TP thuc te (SL=", DoubleToString(actualSl, 2),
+               ", TP=", DoubleToString(actualTp, 2), ") khac gia tri da gui khi mo lenh (SL=",
+               DoubleToString(sl, 2), ", TP=", DoubleToString(tp, 2), ") - co the bi broker ghi de. Dang tu set lai.");
+
+         bool slTpFixed = trade.PositionModify(posTicket, sl, tp);
+         if(!slTpFixed)
+            Print(label, " #", posTicket, ": set lai SL/TP that bai, error code: ", GetLastError());
+         else
+            Print(label, " #", posTicket, ": da set lai SL/TP -> SL=", DoubleToString(sl, 2), " TP=", DoubleToString(tp, 2));
+
+         SendTelegram("CANH BAO: SL/TP bi thay doi sau khi mo lenh #" + IntegerToString(posTicket) +
+                       " (" + label + ")%0A SL da gui: " + DoubleToString(sl, 2) + " - thuc te: " + DoubleToString(actualSl, 2) +
+                       "%0A TP da gui: " + DoubleToString(tp, 2) + " - thuc te: " + DoubleToString(actualTp, 2) +
+                       "%0A Da tu set lai: " + (slTpFixed ? "OK" : "THAT BAI"));
+      }
+
       SendTelegram(TelegramMsg(label + " OK",
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
