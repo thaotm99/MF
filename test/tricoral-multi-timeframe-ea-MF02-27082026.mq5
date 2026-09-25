@@ -378,7 +378,7 @@ void OpenOrder(int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string label      = isBuy ? "Buy" : "Sell";
+   string label      = BOT_COMMENT_PREFIX + " " + (isBuy ? "Buy" : "Sell");
 
    double dailyPnl = 0;
    if(DailyLimitReached(dailyPnl))
@@ -493,11 +493,6 @@ void TrailingStop(ulong ticket)
    double profitDist = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
 
-   Print("TrailingStop #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-         ": entry=", DoubleToString(entryPrice, digits), " sl=", DoubleToString(sl, digits),
-         " price=", DoubleToString(price, digits), " profitDist=", DoubleToString(profitDist, digits),
-         " slAtOrAboveEntry=", slAtOrAboveEntry);
-
    double newSL = 0;
 
    // ----- GIAI DOAN 2: SL da >= entry -> trail theo 10 gia -----
@@ -518,7 +513,6 @@ void TrailingStop(ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
@@ -539,20 +533,17 @@ void TrailingStop(ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
    else
    {
-      Print("TrailingStop #", ticket, ": not enough profit yet, skip (profitDist < InpTrailDistance)");
       return; // chua du dieu kien
    }
 
    // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
    if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
    {
-      Print("TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
       return;
    }
 
@@ -563,7 +554,6 @@ void TrailingStop(ulong ticket)
    }
 
    g_lastModifyTime = TimeCurrent();
-   Print("TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
 
    // ----- Thong bao Telegram -----
    bool bigMove   = MathAbs(newSL - g_lastNotifiedSL) >= InpTrailNotifyStep;
@@ -571,16 +561,12 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
-      SendTelegram(TelegramMsg("Trail " + (isBuy ? "BUY" : "SELL"),
+      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
          "-", DoubleToString(sl, 2), "-"));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print("TrailingStop #", ticket, ": Telegram notification sent");
-   }
-   else
-   {
-      Print("TrailingStop #", ticket, ": Telegram notification skipped (bigMove=", bigMove, ", cooledOff=", cooledOff, ")");
    }
 }
 

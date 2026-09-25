@@ -19,6 +19,14 @@
 input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong magic=0)
 
 //=============================================================================
+// INPUTS (trailing stop - chi breakeven, khong bam SL tiep sau do)
+//=============================================================================
+ double InpTrailDistance       = 10;  // Muc lai (theo gia) de keo SL ve entry, sau do dung han
+input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them >= gia tri nay
+input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing
+input int    InpTrailModifyCooldown = 2;    // Giay toi thieu giua 2 lan THUC SU gui lenh sua SL len san (tach biet, khong lien quan thoi gian gui Telegram)
+
+//=============================================================================
 // INPUTS (stop loss)
 //=============================================================================
 input double InpSlSpacingDistance = 8;  // Khoảng cách SL tối đa tính từ entry (theo giá), cap lại nếu swing xa hơn
@@ -56,6 +64,9 @@ string   g_previousPosition = "NONE";
 double   g_tradeLotSize     = 0;
 double   g_lotMultiplier    =  10;   // he so nhan vol co ban (min lot x he so); dong thoi la nguong chot loi *100
 
+double   g_lastNotifiedSL   = 0;
+datetime g_lastNotifyTime   = 0;
+datetime g_lastModifyTime   = 0;   // lan gan nhat THUC SU gui lenh sua SL len san (throttle InpTrailModifyCooldown)
 datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (throttle InpSidewayNotifyCooldown)
 
 CTrade   trade;
@@ -188,7 +199,8 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
 //=============================================================================
 // TICK
 //=============================================================================
-// Mỗi tick: xử lý tín hiệu vào lệnh khi có nến M1 mới, sau đó cập nhật previousPosition cho tất cả lệnh đang mở của bot (không trailing)
+// Mỗi tick: xử lý tín hiệu vào lệnh khi có nến M1 mới, sau đó trail SL (chỉ về breakeven)
+// cho tất cả lệnh đang mở của bot
 void OnTick()
 {
    static datetime lastBarTime = 0;
@@ -207,7 +219,7 @@ void OnTick()
       if(!PositionSelectByTicket(ticket)) continue;
       if(!IsBotPosition()) continue;   // bo qua lenh thu cong / symbol khac
 
-      // Khong trailing - lenh giu nguyen SL/TP co dinh dat luc OpenOrder()
+      TrailingStop(ticket);
       g_previousPosition = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "LONG" : "SHORT";
    }
 }
@@ -294,7 +306,7 @@ double GetBotFloatingProfit()
 
 // Kiem tra da cham nguong dung vao lenh moi trong ngay chua: lo >= InpDailyMaxLoss hoac lai >= InpDailyMaxProfit.
 // dailyPnl (tra ra ngoai) = tong P/L da chot + dang mo cua bot trong ngay server hien tai.
-// Lenh dang mo van duoc CloseAllPositions quan ly binh thuong (khong con TrailingStop), chi OpenOrder() bi chan.
+// Lenh dang mo van duoc TrailingStop/CloseAllPositions quan ly binh thuong, chi OpenOrder() bi chan.
 bool DailyLimitReached(double &dailyPnl)
 {
    dailyPnl = (GetTodayRealizedProfit() + GetBotFloatingProfit() );
@@ -352,7 +364,7 @@ void OpenOrder(int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string label      = isBuy ? "Buy" : "Sell";
+   string label      = BOT_COMMENT_PREFIX + " " + (isBuy ? "Buy" : "Sell");
 
    double dailyPnl = 0;
    if(DailyLimitReached(dailyPnl))
@@ -459,6 +471,94 @@ void CloseAllPositions()
          { Print("Failed to close bot position, ticket=", ticket, ", error code: ", GetLastError()); ResetLastError(); }
       else
          Print("Bot position closed, ticket=", ticket);
+   }
+}
+
+//=============================================================================
+// TRAILING STOP (chi breakeven, khong bam SL tiep)
+//=============================================================================
+// Kiểm tra SL mới có vi phạm stops level tối thiểu của broker không (quá gần giá hiện tại)
+bool StopsLevelOk(bool isBuy, double newSL, double bidNow, double askNow, double minStop)
+{
+   return isBuy ? (bidNow - newSL >= minStop) : (newSL - askNow >= minStop);
+}
+
+// Trail SL cho 1 lệnh của bot: kéo SL về entry (breakeven) khi lãi đủ InpTrailDistance rồi
+// DỪNG LẠI, không bám SL tiếp sau khi đã breakeven (khac MF_01/MF_02: khong co giai doan 2)
+void TrailingStop(ulong ticket)
+{
+   if(!PositionSelectByTicket(ticket)) return;
+   if(!IsBotPosition()) return;   // chi trail lenh cua bot
+
+   double sl         = PositionGetDouble(POSITION_SL);
+   double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+   bool   isBuy      = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+   string symbol     = PositionGetString(POSITION_SYMBOL);
+
+   double bidNow = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double askNow = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   double price  = isBuy ? bidNow : askNow;   // giá đóng lệnh hiện tại
+
+   int    digits  = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double minStop = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+   double profitDist       = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
+   bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
+
+   if(slAtOrAboveEntry)
+   {
+      Print("TrailingStop #", ticket, ": SL da o entry (breakeven), khong trail them");
+      return;
+   }
+
+   if(profitDist < InpTrailDistance)
+   {
+      return;
+   }
+
+   double newSL = NormalizeDouble(entryPrice, digits);
+   Print("TrailingStop #", ticket, ": breakeven -> candidate newSL=", DoubleToString(newSL, digits));
+
+   // SL moi phai tot hon SL hien tai
+   bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
+                              : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
+   if(worseOrEqual)
+   {
+      Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
+      return;
+   }
+
+   if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
+   {
+      return;
+   }
+
+   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
+   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
+   {
+      return;
+   }
+
+   if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
+   {
+      Print("TrailingStop #", ticket, ": PositionModify failed, error code: ", GetLastError());
+      return;
+   }
+
+   g_lastModifyTime = TimeCurrent();
+
+   // ----- Thong bao Telegram -----
+   bool bigMove   = MathAbs(newSL - g_lastNotifiedSL) >= InpTrailNotifyStep;
+   bool cooledOff = (TimeCurrent() - g_lastNotifyTime) >= InpTrailNotifyCooldown;
+
+   if(bigMove && cooledOff)
+   {
+      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " Trail " + (isBuy ? "BUY" : "SELL"),
+         DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
+         "-", DoubleToString(sl, 2), "-"));
+      g_lastNotifiedSL = newSL;
+      g_lastNotifyTime = TimeCurrent();
+      Print("TrailingStop #", ticket, ": Telegram notification sent");
    }
 }
 
@@ -585,8 +685,13 @@ void NotifySidewayMarket()
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
 //
-// 4. Không trailing stop: lệnh giữ nguyên SL/TP cố định đặt lúc OpenOrder() cho tới khi
-//    đóng bởi TP/SL hoặc CloseAllPositions() (đảo chiều).
+// 4. Trailing stop CHỈ breakeven (TrailingStop, chạy MỌI tick, không chờ nến mới): khi lãi
+//    >= InpTrailDistance, kéo SL về đúng giá entry rồi DỪNG LẠI - không tiếp tục bám SL theo
+//    giá như MF_01/MF_02 (không có "giai đoạn 2"). Trước khi đạt mốc breakeven, lệnh giữ
+//    nguyên SL/TP cố định đặt lúc OpenOrder(). Luôn kiểm tra stops level tối thiểu của broker
+//    (StopsLevelOk) trước khi gửi lệnh sửa SL, và throttle tối đa 1 lần sửa SL thực sự mỗi
+//    InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime) - độc lập với
+//    InpTrailNotifyCooldown (chỉ chi phối tần suất gửi Telegram).
 //
 // 5. Volume: cố định = min lot của symbol nhân hệ số g_lotMultiplier (CalcOrderVolume),
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
@@ -609,8 +714,8 @@ void NotifySidewayMarket()
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
 //    ($40) hoặc lãi >= InpDailyMaxProfit ($100), bot NGỪNG mở lệnh mới cho đến hết ngày.
-//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được CloseAllPositions quản lý bình thường
-//    (không còn trailing), chỉ đường mở lệnh mới (OpenOrder) bị chặn.
+//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được TrailingStop/CloseAllPositions quản lý
+//    bình thường, chỉ đường mở lệnh mới (OpenOrder) bị chặn.
 //
 // 9. Giới hạn lãi theo khung giờ (TimeWindowLimitReached, gọi trong OpenOrder, bổ sung
 //    song song với mục 8 - không thay thế): 1 ngày chia làm 3 khung giờ server 00h-6h /

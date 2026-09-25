@@ -139,6 +139,16 @@ int OnInit()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) { Print("Auto trading is disabled in terminal - EA init aborted"); return 0; }
 
+   // Dam bao symbol duoc them vao Market Watch va nhan tick song. Neu khong goi ham nay,
+   // SymbolInfoDouble(SYMBOL_ASK/BID) co the tra ve gia CACHE CU (tu lan cuoi terminal
+   // tung thay symbol nay) thay vi gia thi truong hien tai, khien moi tinh toan SL/TP/entry
+   // sai lech nghiem trong so voi gia that.
+   if(!SymbolSelect(_Symbol, true))
+   {
+      Print("Khong the them ", _Symbol, " vao Market Watch - EA init aborted");
+      return INIT_FAILED;
+   }
+
    // Canh bao neu tai khoan khong o che do HEDGING: co che tach lenh theo magic+comment
    // (IsBotPosition) chi dang tin cay tren HEDGING. Tren NETTING/EXCHANGE, cac lenh cung
    // huong tren cung symbol bi MT5 tu dong gop lam 1 position, TP/SL cua lenh moi khong
@@ -734,10 +744,6 @@ void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double o
       g_lastNotifyTime = TimeCurrent();
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": Telegram notification sent");
    }
-   else
-   {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": Telegram notification skipped (bigMove=", bigMove, ", cooledOff=", cooledOff, ")");
-   }
 }
 
 // Ca 2 chien luoc con lai (MF_01/MF_02) deu dung trailing 2 giai doan
@@ -769,18 +775,12 @@ void TrailingStopTwoStage(int s, ulong ticket)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
    double trailDistance    = g_strategies[s].trailDistance;
 
-   Print(g_strategies[s].code, " TrailingStop #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-         ": entry=", DoubleToString(entryPrice, digits), " sl=", DoubleToString(sl, digits),
-         " price=", DoubleToString(price, digits), " profitDist=", DoubleToString(profitDist, digits),
-         " slAtOrAboveEntry=", slAtOrAboveEntry);
-
    double newSL = 0;
 
    if(slAtOrAboveEntry)
    {
       newSL = isBuy ? NormalizeDouble(price - trailDistance, digits)
                     : NormalizeDouble(price + trailDistance, digits);
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": phase 2 (trail) -> candidate newSL=", DoubleToString(newSL, digits));
 
       bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
                                  : (newSL >= NormalizeDouble(sl, digits));
@@ -792,14 +792,12 @@ void TrailingStopTwoStage(int s, ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
    else if(profitDist >= trailDistance)
    {
       newSL = NormalizeDouble(entryPrice, digits);
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": phase 1 (breakeven) -> candidate newSL=", DoubleToString(newSL, digits));
 
       bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
                                  : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
@@ -811,20 +809,17 @@ void TrailingStopTwoStage(int s, ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
    else
    {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": not enough profit yet, skip (profitDist < trailDistance)");
       return;
    }
 
    // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
    if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
    {
-      Print(g_strategies[s].code, " TrailingStop #", ticket, ": skipped - chua du InpTrailModifyCooldown giay tu lan sua SL truoc");
       return;
    }
 
@@ -835,7 +830,6 @@ void TrailingStopTwoStage(int s, ulong ticket)
    }
 
    g_lastModifyTime = TimeCurrent();
-   Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
    NotifyTrailing(s, ticket, isBuy, entryPrice, sl, newSL);
 }
 

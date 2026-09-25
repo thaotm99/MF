@@ -1,16 +1,17 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) -
-// dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition, KHONG thay the
-#define BOT_COMMENT_PREFIX "ATR : "
+// Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) - la ma
+// chien luoc, dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition,
+// KHONG thay the. Comment day du dang "MF_01,A: x.x,ek: x.xx,er: x.xx" (xem OpenOrder)
+#define BOT_COMMENT_PREFIX "MF_01"
 
 //=============================================================================
 // INPUTS
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
- string InpTelegramChatID        = "7383830655"; // 
+ string InpTelegramChatID        = "7383830655"; //
 
 //=============================================================================
 // INPUTS (Magic Number - phan biet lenh bot vs lenh thu cong)
@@ -23,6 +24,7 @@ input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong ma
  double InpTrailDistance       = 10;  // Khoảng cách bám SL khi đã ở vùng dương
 input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
 input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
+input int    InpTrailModifyCooldown = 2;    // Giây tối thiểu giữa 2 lần THỰC SỰ gửi lệnh sửa SL lên sàn (tách biệt, không liên quan thời gian gửi Telegram)
 
 //=============================================================================
 // INPUTS (stop loss)
@@ -46,6 +48,16 @@ input double InpDailyMaxProfit = 100;  // Lãi tối đa trong ngày ($) - chạ
 input double InpTimeWindowMaxProfit = 30;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
 
 //=============================================================================
+// INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, chi de
+// tinh/hien thi/gui Telegram + ghi vao comment lenh, CHUA dung de loc tin hieu vao lenh)
+//=============================================================================
+input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency Ratio
+input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
+input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
+input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
+input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram
+
+//=============================================================================
 // GLOBALS
 //=============================================================================
 string   g_previousPosition = "NONE";
@@ -54,6 +66,8 @@ double   g_lotMultiplier    =  1;   // he so nhan vol co ban (min lot x he so); 
 
 double   g_lastNotifiedSL   = 0;
 datetime g_lastNotifyTime   = 0;
+datetime g_lastModifyTime   = 0;   // lan gan nhat THUC SU gui lenh sua SL len san (throttle InpTrailModifyCooldown)
+datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (throttle InpSidewayNotifyCooldown)
 
 CTrade   trade;
 
@@ -74,7 +88,7 @@ int OnInit()
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   
+
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
@@ -216,6 +230,8 @@ void OnTick()
 // sau đó mở lệnh mới khi cả 3 khung đồng thuận hướng (buy/sell signal)
 int ProcessSignal(int shift)
 {
+   NotifySidewayMarket();   // canh bao rieng, doc lap voi tin hieu vao/dong lenh ben duoi
+
    bool upNow    = IsCoralUp(PERIOD_M1, shift);
    bool upPrev   = IsCoralUp(PERIOD_M1, shift + 1);
    bool downNow  = IsCoralDown(PERIOD_M1, shift);
@@ -347,7 +363,7 @@ void OpenOrder(int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string label      = isBuy ? "Buy" : "Sell";
+   string label      = BOT_COMMENT_PREFIX + " " + (isBuy ? "Buy" : "Sell");
 
    double dailyPnl = 0;
    if(DailyLimitReached(dailyPnl))
@@ -397,7 +413,12 @@ void OpenOrder(int orderType, int shift)
    // TP co dinh cach entry InpTakeProfitDistance gia: BUY cong them, SELL tru di
    double tp = isBuy ? entryPrice + InpTakeProfitDistance : entryPrice - InpTakeProfitDistance;
 
-   string orderComment = BOT_COMMENT_PREFIX + DoubleToString(atr, 1);
+   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   string erKStr = DoubleToString(erK, 2);
+   string erStr  = DoubleToString(er, 2);
+
+   string orderComment = BOT_COMMENT_PREFIX + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -407,7 +428,7 @@ void OpenOrder(int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
       return;
    }
 
@@ -417,12 +438,13 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)));
+         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
    }
 
    g_previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
-         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2));
+         ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
+         ", erK: ", erKStr, ", er: ", erStr);
 }
 
 //=============================================================================
@@ -456,11 +478,6 @@ void TrailingStop(ulong ticket)
    double profitDist = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
 
-   Print("TrailingStop #", ticket, " ", (isBuy ? "BUY" : "SELL"),
-         ": entry=", DoubleToString(entryPrice, digits), " sl=", DoubleToString(sl, digits),
-         " price=", DoubleToString(price, digits), " profitDist=", DoubleToString(profitDist, digits),
-         " slAtOrAboveEntry=", slAtOrAboveEntry);
-
    double newSL = 0;
 
    // ----- GIAI DOAN 2: SL da >= entry -> trail theo 10 gia -----
@@ -481,7 +498,6 @@ void TrailingStop(ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
@@ -502,14 +518,18 @@ void TrailingStop(ulong ticket)
 
       if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
       {
-         Print("TrailingStop #", ticket, ": skipped - newSL violates broker's minimum stops level");
          return;
       }
    }
    else
    {
-      Print("TrailingStop #", ticket, ": not enough profit yet, skip (profitDist < InpTrailDistance)");
       return; // chua du dieu kien
+   }
+
+   // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
+   if((TimeCurrent() - g_lastModifyTime) < InpTrailModifyCooldown)
+   {
+      return;
    }
 
    if(!trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
@@ -518,7 +538,7 @@ void TrailingStop(ulong ticket)
       return;
    }
 
-   Print("TrailingStop #", ticket, ": SL updated -> ", DoubleToString(newSL, digits));
+   g_lastModifyTime = TimeCurrent();
 
    // ----- Thong bao Telegram -----
    bool bigMove   = MathAbs(newSL - g_lastNotifiedSL) >= InpTrailNotifyStep;
@@ -526,16 +546,12 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
-      SendTelegram(TelegramMsg("Trail " + (isBuy ? "BUY" : "SELL"),
+      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
          "-", DoubleToString(sl, 2), "-"));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print("TrailingStop #", ticket, ": Telegram notification sent");
-   }
-   else
-   {
-      Print("TrailingStop #", ticket, ": Telegram notification skipped (bigMove=", bigMove, ", cooledOff=", cooledOff, ")");
    }
 }
 
@@ -597,6 +613,81 @@ bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasVa
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
 
 //=============================================================================
+// EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
+// voi tong quang duong di cua gia (path) trong "period" nen gan nhat. ER cang gan 1 nghia
+// la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
+//=============================================================================
+// Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15).
+// Tra ve -1.0 neu tham so khong hop le (period<2, shift<0) hoac khong du du lieu/gia di
+// ngang tuyet doi (path<=0) - dong nhat 1 sentinel "khong dung duoc" cho moi truong hop.
+double EfficiencyRatio(ENUM_TIMEFRAMES tf, int period, int shift)
+{
+   if(period < 2 || shift < 0) return -1.0;
+
+   double c[];
+   ArraySetAsSeries(c, true);
+   if(CopyClose(_Symbol, tf, shift, period + 1, c) < period + 1) return -1.0;
+   double disp = MathAbs(c[0] - c[period]);
+   double path = 0.0;
+   for(int i = 0; i < period; i++) path += MathAbs(c[i] - c[i + 1]);
+   return (path > 0.0) ? disp / path : -1.0;
+}
+
+// Xep hang ER hien tai (shift=1) so voi "lookback" gia tri ER cua cac cua so truot qua khu
+// tren cung khung thoi gian: tra ve ty le cac gia tri ER qua khu THAP HON ER hien tai (0..1).
+// ERRank cang cao nghia la ER hien tai dang "hieu qua"/trending hon phan lon lich su gan day.
+// Tra ve -1.0 neu khong du du lieu (chua dung de loc tin hieu, chi de bao cao).
+double ERRank(ENUM_TIMEFRAMES tf, int period, int lookback)
+{
+   double cur = EfficiencyRatio(tf, period, 1);
+   if(cur < 0) return -1.0;
+
+   double c[];
+   ArraySetAsSeries(c, true);
+   int need = lookback + period + 2;
+   if(CopyClose(_Symbol, tf, 0, need, c) < need) return -1.0;
+
+   int below = 0, valid = 0;
+   for(int s = 1; s <= lookback; s++)
+   {
+      double disp = MathAbs(c[s] - c[s + period]);
+      double path = 0.0;
+      for(int i = s; i < s + period; i++) path += MathAbs(c[i] - c[i + 1]);
+      if(path <= 0.0) continue;
+      valid++;
+      if(disp / path < cur) below++;
+   }
+   return (valid > 0) ? (double)below / valid : -1.0;
+}
+
+// Canh bao Telegram khi thi truong dang sideway (Efficiency Ratio qua thap tren InpERtf,
+// mac dinh M5) - CHI de thong bao, khong lien quan gioi han vao/dong lenh. Throttle rieng
+// bang InpSidewayNotifyCooldown (mac dinh 1800s = 30 phut), doc lap voi moi cooldown khac.
+void NotifySidewayMarket()
+{
+   double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+   if(!(er > 0 && er < 0.05)) return;   // khong sideway (hoac khong tinh duoc, er=-1.0)
+
+   if((TimeCurrent() - g_lastSidewayNotifyTime) < InpSidewayNotifyCooldown)
+   {
+      Print("NotifySidewayMarket: sideway detected (er=", DoubleToString(er, 2), ") nhung chua du InpSidewayNotifyCooldown giay tu lan bao truoc");
+      return;
+   }
+
+   double erK = ERRank(InpERtf, InpERPeriod, InpERLookback);
+
+   double atrBuf[]; ArraySetAsSeries(atrBuf, true);
+   double atr = 0;
+   if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
+
+   SendTelegram("Sideway warning - " + BOT_COMMENT_PREFIX + " %0A ATR: " + DoubleToString(atr, 1) +
+                " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
+
+   g_lastSidewayNotifyTime = TimeCurrent();
+   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", erK=", DoubleToString(erK, 2), ", er=", DoubleToString(er, 2), ")");
+}
+
+//=============================================================================
 // Ý TƯỞNG CHIẾN LƯỢC CỦA BOT (tổng quan)
 //=============================================================================
 // 1. Tín hiệu: đọc trend chỉ báo Coral trên 3 khung M1 (chính) / M5 / M15 (xác nhận).
@@ -614,18 +705,24 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
 //
-// 4. Trailing stop 2 giai đoạn (TrailingStop):
+// 4. Trailing stop 2 giai đoạn (TrailingStop, chạy MỌI tick, không chờ nến mới):
 //      - Giai đoạn 1 (breakeven): khi lãi >= InpTrailDistance, kéo SL về đúng giá entry.
 //      - Giai đoạn 2 (trail): khi SL đã ở mức entry trở lên, tiếp tục bám SL cách giá
 //        hiện tại InpTrailDistance, chỉ đổi theo hướng có lợi và luôn kiểm tra stops
 //        level tối thiểu của broker (StopsLevelOk) trước khi gửi lệnh sửa SL.
+//      - Throttle gửi lệnh: dù giá cải thiện từng tick, chỉ THỰC SỰ gửi PositionModify()
+//        tối đa 1 lần mỗi InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime) để
+//        tránh spam request lên sàn khi giá chạy liên tục. Cooldown này độc lập hoàn toàn
+//        với InpTrailNotifyCooldown (chỉ chi phối tần suất gửi Telegram, không liên quan).
 //
 // 5. Volume: cố định = min lot của symbol nhân hệ số g_lotMultiplier (CalcOrderVolume),
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
 //
 // 6. Phân tách lệnh bot / lệnh thủ công: mọi lệnh bot mở đều được gán InpMagicNumber
-//    (trade.SetExpertMagicNumber trong OnInit). Mọi thao tác trail/đóng lệnh đều đi qua
-//    IsBotPosition() để chỉ đụng tới lệnh có magic này, không đụng vào lệnh thủ công.
+//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_01,A: x.x,ek: x.xx,
+//    er: x.xx" (BOT_COMMENT_PREFIX = "MF_01", xem OpenOrder). Mọi thao tác trail/đóng lệnh
+//    đều đi qua IsBotPosition() để chỉ đụng tới lệnh có magic này VÀ comment bắt đầu bằng
+//    "MF_01", không đụng vào lệnh thủ công.
 //    LƯU Ý quan trọng: cơ chế này chỉ đáng tin cậy trên tài khoản HEDGING. Trên tài
 //    khoản NETTING, MT5 chỉ cho 1 position/symbol - nếu bot gửi lệnh (Buy/Sell) trong
 //    lúc đang có lệnh thủ công trên cùng symbol, MT5 sẽ tự động gộp/netting 2 lệnh đó
@@ -633,8 +730,8 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    thêm bước kiểm tra "có lệnh không phải của bot đang mở trên symbol" trước khi gọi
 //    trade.Buy/trade.Sell trong OpenOrder() để tránh rủi ro này trên tài khoản netting.
 //
-// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại, trail SL, tín hiệu
-//    bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
+// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm erK/er, trail SL,
+//    tín hiệu bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
 //
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
@@ -648,5 +745,16 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 //    + đang mở) > InpTimeWindowMaxProfit ($30), bot NGỪNG mở lệnh mới đến khi sang khung
 //    giờ kế tiếp. Vì luôn tính lại theo khung giờ hiện tại (không lưu trạng thái), ngưỡng
 //    tự động "reset" khi giờ server bước sang khung mới. Lệnh đang mở không bị đóng.
+//
+// 10. Efficiency Ratio: đo "độ hiệu quả" của xu hướng giá trên khung InpERtf (mặc định M5,
+//     độc lập với Coral M1/M5/M15).
+//     - Trong OpenOrder: ghi 2 giá trị (làm tròn 2 chữ số thập phân) vào comment lệnh + gửi
+//       Telegram khi mở lệnh - er (EfficiencyRatio, ER hiện tại tại shift=1) và erK (ERRank,
+//       xếp hạng ER hiện tại so với InpERLookback=300 giá trị ER quá khứ). CHƯA dùng để lọc
+//       tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
+//     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
+//       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + erK +
+//       er), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,
+//       g_lastSidewayNotifyTime) - độc lập hoàn toàn với các cooldown khác (trailing, v.v.)
+//       và không ảnh hưởng tới việc vào/đóng lệnh.
 //=============================================================================
-

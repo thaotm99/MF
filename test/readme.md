@@ -1,7 +1,7 @@
-# Tricoral Multi-Strategy EA — MF_01 → MF_05
+# Tricoral Multi-Strategy EA — MF_01 → MF_06
 
-Tài liệu tổng hợp 5 biến thể chiến lược Tricoral Coral (M1/M5/M15) trong thư mục `test/`,
-và bản gộp cả 5 chiến lược vào 1 EA duy nhất.
+Tài liệu tổng hợp 6 biến thể chiến lược Tricoral Coral (M1/M5/M15) trong thư mục `test/`,
+và bản gộp cả 6 chiến lược vào 1 EA duy nhất.
 
 ## 1. Danh sách file
 
@@ -12,18 +12,19 @@ và bản gộp cả 5 chiến lược vào 1 EA duy nhất.
 | MF_03 | `tricoral-multi-timeframe-ea-MF03-290826.mq5` | `g_strategies[2]`, magic `InpMF03_Magic` (mặc định `20250808`) |
 | MF_04 | `tricoral-multi-timeframe-ea-MF04-150926.mq5` | `g_strategies[3]`, magic `InpMF04_Magic` (mặc định `20250809`) |
 | MF_05 | `tricoral-multi-timeframe-ea-MF05-170926.mq5` | `g_strategies[4]`, magic `InpMF05_Magic` (mặc định `20250810`) |
+| MF_06 | `tricoral-multi-timeframe-ea-MF06-220926.mq5` | `g_strategies[5]`, magic `InpMF06_Magic` (mặc định `20250811`) |
 
-File gộp: `tricoral-multi-strategy-ea-MF-01-05.mq5` — chạy cả 5 chiến lược cùng lúc trên
+File gộp: `tricoral-multi-strategy-ea-MF-01-06.mq5` — chạy cả 6 chiến lược cùng lúc trên
 cùng 1 symbol, mỗi chiến lược bật/tắt độc lập qua `InpMFxx_Enabled`, phân biệt lệnh bằng
 magic riêng + comment lệnh gắn đúng mã chiến lược (`"MF_01"`, `"MF_02"`, …).
 
-**⚠️ Lưu ý khi chạy các file standalone:** cả 5 file đều mặc định `InpMagicNumber = 20250806`
+**⚠️ Lưu ý khi chạy các file standalone:** cả 6 file đều mặc định `InpMagicNumber = 20250806`
 và cùng `BOT_COMMENT_PREFIX = "ATR : "` → nếu chạy 2+ file standalone cùng lúc trên cùng
 account/symbol mà không đổi magic, chúng sẽ **không phân biệt được lệnh của nhau** (đều coi
 lệnh của bot kia là lệnh của mình). Chỉ file gộp mới an toàn để chạy nhiều chiến lược song
 song (mỗi chiến lược có magic + comment riêng).
 
-## 2. Phần chung cho cả 5 chiến lược
+## 2. Phần chung cho cả 6 chiến lược
 
 Tất cả biến thể đều dùng chung các khối sau (khác nhau ở tham số, không khác nhau ở công thức):
 
@@ -49,36 +50,39 @@ Tất cả biến thể đều dùng chung các khối sau (khác nhau ở tham 
 - **Thông báo Telegram**: mọi sự kiện quan trọng (mở lệnh OK/FAIL, trail SL, tín hiệu bị bỏ
   qua do ATR thấp, đóng lệnh, chạm giới hạn P/L) đều gửi qua `SendTelegram`.
 - **Cảnh báo sideway** (`NotifySidewayMarket`, gọi mỗi nến M1 mới, độc lập hoàn toàn với
-  việc vào/đóng lệnh): nếu `0 < er < 0.1` (Efficiency Ratio trên `InpERtf`, mặc định M5, quá
+  việc vào/đóng lệnh): nếu `0 < er < 0.05` (Efficiency Ratio trên `InpERtf`, mặc định M5, quá
   thấp — thị trường đi giằng co) thì gửi Telegram gồm ATR + `erK` (ERRank) + `er`
   (EfficiencyRatio), tối đa 1 lần mỗi `InpSidewayNotifyCooldown` giây (mặc định 1800s = 30
   phút). Ở file gộp, check này chạy **1 lần duy nhất** mỗi nến (không lặp theo từng chiến
   lược đang bật, vì ER không phụ thuộc chiến lược nào).
 
-**Chỗ 5 chiến lược khác nhau thật sự** chỉ nằm ở 2 điểm: **(a)** cách đóng lệnh khi Coral
-đảo chiều, và **(b)** có/không trailing stop (và cách trail). MF_02 có thêm bộ lọc RSI.
+**Chỗ 6 chiến lược khác nhau thật sự** chỉ nằm ở 3 điểm: **(a)** cách đóng lệnh khi Coral
+đảo chiều, **(b)** có/không trailing stop (và cách trail), **(c)** điều kiện lọc thêm trước
+khi vào lệnh. MF_02 có thêm bộ lọc RSI, MF_06 có thêm bộ lọc Efficiency Ratio.
 
 ## 3. Bảng so sánh
 
-| Tiêu chí | MF_01 | MF_02 | MF_03 | MF_04 | MF_05 |
-|---|---|---|---|---|---|
-| Tín hiệu Coral 3TF (M1/M5/M15) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bộ lọc thêm | — | RSI(9) vs SMA45(RSI) | — | — | — |
-| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 **hoặc** ER thấp (`0<er<0.1`) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng |
-| **Trailing stop** | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) | Chỉ breakeven (không trail tiếp) | **Không** (SL/TP cố định) | 2 giai đoạn (breakeven→trail) |
-| TrailDistance | 10 | 10 | 10 | n/a | 10 |
-| SlSpacingDistance | 8 | 8 | 8 | 8 | 8 |
-| TakeProfitDistance | 50 | 50 | 50 | 50 | 50 |
-| DailyMaxLoss / DailyMaxProfit | $40 / $100 | $40 / $100 | $40 / **$200** | $40 / $100 | $40 / $100 |
-| TimeWindowMaxProfit | $30 | $30 | **$70** | $30 | $30 |
-| Hàm đóng lệnh chính | `CloseAllPositions()` | `CloseAllPositions()` | `ExitPositionsOnReversal()` | `CloseAllPositions()` | `CloseReversedPositions()` |
-| Magic mặc định (standalone) | 20250806 | 20250806 | 20250806 | 20250806 | 20250806 |
-| Magic trong file gộp | 20250806 | 20250807 | 20250808 | 20250809 | 20250810 |
+| Tiêu chí | MF_01 | MF_02 | MF_03 | MF_04 | MF_05 | MF_06 |
+|---|---|---|---|---|---|---|
+| Tín hiệu Coral 3TF (M1/M5/M15) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bộ lọc thêm | — | RSI(9) vs SMA45(RSI) | — | — | — | Efficiency Ratio ≥ 0.1 |
+| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng | Đóng **hết** ngay (không xét lãi/lỗ) |
+| **Trailing stop** | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) | Chỉ breakeven (không trail tiếp) | Chỉ breakeven (không trail tiếp) | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) |
+| TrailDistance | 10 | 10 | 10 | 10 | 10 | 10 |
+| SlSpacingDistance | 8 | 8 | 8 | 8 | 8 | 8 |
+| TakeProfitDistance | 50 | 50 | 50 | 50 | 50 | 50 |
+| DailyMaxLoss / DailyMaxProfit | $40 / $100 | $40 / $100 | $40 / **$200** | $40 / $100 | $40 / $100 | $40 / $100 |
+| TimeWindowMaxProfit | $30 | $30 | **$70** | $30 | $30 | $30 |
+| Hàm đóng lệnh chính | `CloseAllPositions()` | `CloseAllPositions()` | `ExitPositionsOnReversal()` | `CloseAllPositions()` | `CloseReversedPositions()` | `CloseAllPositions()` |
+| Magic mặc định (standalone) | 20250806 | 20250806 | 20250806 | 20250806 | 20250806 | 20250806 |
+| Magic trong file gộp | 20250806 | 20250807 | 20250808 | 20250809 | 20250810 | 20250811 |
 
 **Điểm giống nhau nổi bật:** MF_01 là "bản gốc" — MF_02 = MF_01 + RSI filter; MF_04 = MF_01
-− trailing; MF_05 = MF_01 với logic đóng lệnh thông minh hơn (xét lãi/lỗ + streak). MF_03 là
-biến thể khác biệt nhất: vừa đổi cách đóng lệnh (theo từng lệnh, không đóng hết) vừa đổi
-trailing (dừng ở breakeven) vừa nới lỏng ngưỡng giới hạn lãi ($200/$70 thay vì $100/$30).
+nhưng trailing dừng ở breakeven (không trail tiếp, giống MF_03); MF_05 = MF_01 với logic
+đóng lệnh thông minh hơn (xét lãi/lỗ + streak); MF_06 = MF_01 + bộ lọc Efficiency Ratio
+(chỉ vào lệnh khi `er >= 0.1`, ngưỡng cố định, không qua input). MF_03 là biến thể khác biệt
+nhất: vừa đổi cách đóng lệnh (theo từng lệnh, không đóng hết) vừa đổi trailing (dừng ở
+breakeven) vừa nới lỏng ngưỡng giới hạn lãi ($200/$70 thay vì $100/$30).
 
 ## 4. Giải thích chi tiết từng chiến lược
 
@@ -115,7 +119,7 @@ File: `tricoral-multi-timeframe-ea-MF02-27082026.mq5`
 
 File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
 
-- Khác biệt nhất trong 5 chiến lược. **Không** dùng `CloseAllPositions()`/`previousPosition`
+- Khác biệt nhất trong 6 chiến lược. **Không** dùng `CloseAllPositions()`/`previousPosition`
   trong luồng chính — hàm này vẫn tồn tại trong file nhưng chỉ là tiện ích đóng khẩn cấp dự
   phòng, không được gọi.
 - **Thoát lệnh** (`ExitPositionsOnReversal`, gọi đầu mỗi `ProcessSignal`): xét **riêng từng
@@ -133,18 +137,19 @@ File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
   `TimeWindowMaxProfit=$70` (thay vì $30) — hợp lý vì chiến lược này để lệnh chạy lâu hơn
   (gồng lãi), cần ngưỡng chốt lời rộng hơn để không cắt ngang xu hướng đang lãi.
 
-### MF_04 — MF_01 nhưng không trailing
+### MF_04 — MF_01 nhưng trailing chỉ về breakeven (không trail tiếp)
 
 File: `tricoral-multi-timeframe-ea-MF04-150926.mq5`
 
 - Giống **hệt MF_01** về tín hiệu vào lệnh và cách đóng lệnh khi đảo chiều
   (`CloseAllPositions()` không điều kiện, dựa trên `g_previousPosition`).
-- **Không có trailing stop**: toàn bộ hàm `TrailingStop`/`StopsLevelOk` và các input liên
-  quan (`InpTrailDistance`, `InpTrailNotifyStep`, `InpTrailNotifyCooldown`) đã bị loại bỏ
-  khỏi file. Lệnh giữ nguyên SL/TP cố định đặt lúc `OpenOrder()` cho tới khi khớp TP/SL hoặc
-  bị đóng bởi `CloseAllPositions()` khi đảo chiều.
-- Dùng để so sánh hiệu quả: MF_01 (có trailing) vs MF_04 (không trailing) trên cùng 1 bộ
-  tín hiệu vào lệnh.
+- **Trailing chỉ 1 giai đoạn - breakeven** (`TrailingStop`, chạy mọi tick): khi lãi (theo giá)
+  >= `InpTrailDistance` thì kéo SL về đúng entry rồi **dừng lại**, không bám SL tiếp theo giá
+  như MF_01/MF_02. Trước khi đạt mốc breakeven, lệnh giữ nguyên SL/TP cố định đặt lúc
+  `OpenOrder()`. Hành vi giống hệt `TrailingStopBreakevenOnly` của MF_03, chỉ khác cách đóng
+  lệnh khi đảo chiều (MF_04 đóng hết ngay, MF_03 xét từng lệnh theo M1/M5).
+- Dùng để so sánh hiệu quả: MF_01 (trail 2 giai đoạn) vs MF_04 (chỉ về breakeven rồi dừng)
+  trên cùng 1 bộ tín hiệu vào lệnh.
 
 ### MF_05 — MF_01 với logic đóng lệnh "bảo vệ" theo lãi/lỗ + chuỗi lệnh
 
@@ -176,19 +181,36 @@ File: `tricoral-multi-timeframe-ea-MF05-170926.mq5`
 - Trong **file gộp**, N được đưa ra thành input `InpMF05_HoldStreakCount` (mặc định 5) thay
   vì hard-code; bản standalone dùng giá trị cố định `5`.
 
-## 5. File gộp `tricoral-multi-strategy-ea-MF-01-05.mq5`
+### MF_06 — MF_01 với bộ lọc Efficiency Ratio khi vào lệnh
 
-- Chạy cả 5 chiến lược trên, mỗi chiến lược 1 "config" (`struct StrategyConfig`) trong mảng
-  `g_strategies[5]`, bật/tắt độc lập qua `InpMFxx_Enabled`, đọc chung 1 snapshot Coral mỗi
+File: `tricoral-multi-timeframe-ea-MF06-220926.mq5`
+
+- Giống **hệt MF_01** về tín hiệu Coral, cách đóng lệnh khi đảo chiều (`CloseAllPositions()`)
+  và trailing (2 giai đoạn). Khác duy nhất ở điều kiện vào lệnh.
+- **Bộ lọc Efficiency Ratio** (`OpenOrder`, ngay sau bước kiểm tra ATR): tính
+  `EfficiencyRatio(InpERtf, InpERPeriod, 1)` — nếu `er < 0.1` thì bỏ qua tín hiệu (log +
+  Telegram), không vào lệnh. Ngưỡng `0.1` **cố định trong code**, không qua input (khác
+  `InpERRank` — input đó chưa được dùng ở đâu).
+- Ý tưởng: chỉ vào lệnh khi thị trường đủ "hiệu quả"/trending (ER cao), tránh vào lệnh lúc
+  giá đi ngang/nhiễu — ngược với `NotifySidewayMarket` (chỉ cảnh báo khi `er` **thấp**).
+- Trong **file gộp**, cờ bật/tắt bộ lọc này là field `useErEntryFilter` trong
+  `StrategyConfig`, chỉ `true` cho MF_06; các chiến lược khác đều `false`.
+
+## 5. File gộp `tricoral-multi-strategy-ea-MF-01-06.mq5`
+
+- Chạy cả 6 chiến lược trên, mỗi chiến lược 1 "config" (`struct StrategyConfig`) trong mảng
+  `g_strategies[6]`, bật/tắt độc lập qua `InpMFxx_Enabled`, đọc chung 1 snapshot Coral mỗi
   tick (`BuildCoralSnapshot`) để tránh đọc buffer trùng lặp.
 - Cách đóng lệnh khi đảo chiều được trừu tượng hoá qua `ENUM_EXIT_MODE`:
-  - `EXIT_LEGACY_CLOSE_ALL` — MF_01 / MF_02 / MF_04.
+  - `EXIT_LEGACY_CLOSE_ALL` — MF_01 / MF_02 / MF_04 / MF_06.
   - `EXIT_PER_POSITION_M1_M5` — MF_03.
   - `EXIT_STREAK_GUARDED_CLOSE_ALL` — MF_05.
 - Trailing được trừu tượng hoá qua `ENUM_TRAIL_MODE`:
-  - `TRAIL_TWO_STAGE` — MF_01 / MF_02 / MF_05.
-  - `TRAIL_BREAKEVEN_ONLY` — MF_03.
-  - `TRAIL_NONE` — MF_04.
+  - `TRAIL_TWO_STAGE` — MF_01 / MF_02 / MF_05 / MF_06.
+  - `TRAIL_BREAKEVEN_ONLY` — MF_03 / MF_04.
+  - `TRAIL_NONE` — hiện không chiến lược nào dùng, để sẵn cho chiến lược tương lai không cần trailing.
+- Bộ lọc thêm trước khi vào lệnh: `useRsiFilter` (`true` cho MF_02) và `useErEntryFilter`
+  (`true` cho MF_06, ngưỡng cố định `er >= 0.1`) trong `StrategyConfig`.
 - Mỗi chiến lược có magic + comment lệnh riêng (`IsBotPosition(s)` check cả 2 lớp), giới hạn
   lãi/lỗ ngày + khung giờ tính riêng theo magic từng chiến lược — chạm ngưỡng chỉ chặn
   `OpenOrder` của chiến lược đó, không ảnh hưởng chiến lược khác.
