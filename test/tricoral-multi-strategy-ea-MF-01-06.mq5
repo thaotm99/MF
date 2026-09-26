@@ -6,12 +6,13 @@
 // thoi tren cung symbol khong dung nhau. Nguon goc tung chien luoc:
 //   MF_01 <- mt5/releases/tricoral-multi-timeframe-ea-MF01.mq5
 //   MF_02 <- test/tricoral-multi-timeframe-ea-MF02-27082026.mq5   (+ RSI/SMA filter)
-//   MF_03 <- test/tricoral-multi-timeframe-ea-MF03-290826.mq5     (thoat theo tung lenh M1/M5, trailing chi breakeven)
+//   MF_03 <- test/tricoral-multi-timeframe-ea-MF03-290826.mq5     (thoat theo tung lenh M1/M5
+//            + RSI(M5) cat SMA45, trailing chi breakeven)
 //   MF_04 <- test/tricoral-multi-timeframe-ea-MF04-150926.mq5     (= MF_01 nhung trailing chi breakeven, khong trail tiep)
 //   MF_05 <- test/tricoral-multi-timeframe-ea-MF05-170926.mq5     (= MF_01 nhung dong lenh dao chieu co dieu kien:
 //            lenh lai dong ngay, lenh lo chi dong khi da co chuoi >= N deal dong gan nhat cung huong)
 //   MF_06 <- test/tricoral-multi-timeframe-ea-MF06-220926.mq5     (= MF_01 nhung them dieu kien vao lenh:
-//            chi vao lenh khi Efficiency Ratio hien tai (InpERtf/InpERPeriod) >= 0.1)
+//            chi vao lenh khi Efficiency Ratio hien tai (InpERtf/InpERPeriod) nam trong (0.1, 0.4])
 //
 // LUU Y TRIEN KHAI: neu tai khoan dang co lenh mo tu ban EA rieng le cu (comment "ATR : x.x"),
 // EA nay se KHONG nhan dien duoc cac lenh do (comment prefix da doi thanh ma chien luoc,
@@ -117,7 +118,7 @@ input int    InpMF05_HoldStreakCount     = 5;    // So deal dong gan nhat can cu
 
 //=============================================================================
 // MF_06 - Coral 3TF thuan (= MF_01), them dieu kien vao lenh: chi vao khi Efficiency Ratio
-// hien tai (InpERtf/InpERPeriod, nguong co dinh 0.1) >= 0.1
+// hien tai (InpERtf/InpERPeriod) nam trong khoang (0.1, 0.4] - nguong co dinh, khong qua input
 //=============================================================================
 input group "=== MF_06 ==="
 input bool   InpMF06_Enabled             = true;
@@ -155,7 +156,7 @@ struct StrategyConfig
    long            magic;
    double          volMultiplier;        // he so nhan vol (min_lot * he so); dong thoi nhan vao nguong daily/time-window
    bool            useRsiFilter;
-   bool            useErEntryFilter;     // chi vao lenh khi Efficiency Ratio hien tai >= 0.1 (MF_06)
+   bool            useErEntryFilter;     // chi vao lenh khi Efficiency Ratio hien tai nam trong (0.1, 0.4] (MF_06)
    ENUM_EXIT_MODE  exitMode;
    ENUM_TRAIL_MODE trailMode;
    double          slSpacingDistance;
@@ -185,7 +186,7 @@ datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (th
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1, g_hRsiM1;
+int g_hATR_M1, g_hADX_M1, g_hRsiM1, g_hRsiM5;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15;
 
 //=============================================================================
@@ -310,12 +311,13 @@ int OnInit()
    g_hATR_M1  = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1  = iADX(_Symbol, PERIOD_M1, 14);
    g_hRsiM1   = iRSI(_Symbol, PERIOD_M1, InpMF02_RsiPeriod, PRICE_CLOSE);
+   g_hRsiM5   = iRSI(_Symbol, PERIOD_M5, InpMF02_RsiPeriod, PRICE_CLOSE);   // dung rieng cho dieu kien thoat lenh cua MF_03
 
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM1==INVALID_HANDLE || g_hRsiM5==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE)
    {
       Print("Failed to create ATR/ADX/RSI/Coral indicator handle(s) for ", _Symbol);
@@ -337,6 +339,7 @@ void OnDeinit(const int reason)
    IndicatorRelease(g_hATR_M1);
    IndicatorRelease(g_hADX_M1);
    IndicatorRelease(g_hRsiM1);
+   IndicatorRelease(g_hRsiM5);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
    IndicatorRelease(g_hCoralM15);
@@ -570,6 +573,32 @@ void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
    maSlow = sumS / InpMF02_MaSlow;
 }
 
+// RSI + SMA(RSI) tren khung M5 - dung rieng cho dieu kien thoat lenh cua MF_03
+// (ExitPositionsOnReversal), tai su dung cung nguong InpMF02_MaFast/MaSlow nhung tinh tren
+// chuoi RSI M5 (g_hRsiM5) thay vi M1, cho khop voi khung M5 dang dung de xet dao chieu.
+void GetRsiSmaM5(int shift, double &rsi, double &maFast, double &maSlow)
+{
+   int need = InpMF02_MaSlow + shift + 5;
+
+   double rsiBuf[];
+   ArraySetAsSeries(rsiBuf, true);
+   if(CopyBuffer(g_hRsiM5, 0, 0, need, rsiBuf) <= 0)
+   {
+      rsi = 0; maFast = 0; maSlow = 0;
+      return;
+   }
+
+   rsi = rsiBuf[shift];
+
+   double sumF = 0;
+   for(int i = shift; i < shift + InpMF02_MaFast; i++) sumF += rsiBuf[i];
+   maFast = sumF / InpMF02_MaFast;
+
+   double sumS = 0;
+   for(int j = shift; j < shift + InpMF02_MaSlow; j++) sumS += rsiBuf[j];
+   maSlow = sumS / InpMF02_MaSlow;
+}
+
 //=============================================================================
 // TICK
 //=============================================================================
@@ -624,7 +653,7 @@ void ProcessStrategySignal(int s, int shift, const CoralSnapshot &snap)
    }
    else
    {
-      ExitPositionsOnReversal(s, snap);
+      ExitPositionsOnReversal(s, shift, snap);
    }
 
    bool buySignal  = (snap.upNow   && !snap.upPrev   && snap.upM5   && snap.upM15);
@@ -799,13 +828,21 @@ void OpenOrder(int s, int orderType, int shift)
       return;
    }
 
-   // Dieu kien vao lenh rieng cua MF_06: chi vao lenh khi Efficiency Ratio hien tai >= 0.1
+   // Dieu kien vao lenh rieng cua MF_06: chi vao lenh khi Efficiency Ratio hien tai nam
+   // trong khoang (0.1, 0.4] - qua thap la sideway, qua cao thi bo qua (theo yeu cau)
    if(g_strategies[s].useErEntryFilter)
    {
       double erEntry = EfficiencyRatio(InpERtf, InpERPeriod, 1);
       if(erEntry < 0.1)
       {
          Print(label, " signal skipped on ", _Symbol, ": ER too low (", DoubleToString(erEntry, 2), " < 0.1)");
+         SendTelegram("Signal: " + label + " %0A ER: " + DoubleToString(erEntry, 2));
+         return;
+      }
+
+      if(erEntry > 0.4)
+      {
+         Print(label, " signal skipped on ", _Symbol, ": ER too high (", DoubleToString(erEntry, 2), " > 0.4)");
          SendTelegram("Signal: " + label + " %0A ER: " + DoubleToString(erEntry, 2));
          return;
       }
@@ -1061,10 +1098,14 @@ void TrailingStopBreakevenOnly(int s, ulong ticket)
 //=============================================================================
 // Thoat lenh khi Coral dao chieu nguoc huong lenh, xet rieng tung lenh cua chien luoc s:
 //   - Lenh CHUA breakeven (SL chua ve entry): xet Coral M1 -> thoat nhanh, cat lo som.
-//   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, chi thoat khi Coral M5 dao
-//     nguoc huong lenh.
-void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
+//   - Lenh DA breakeven (SL da ve entry, rui ro = 0): gong lai, thoat khi Coral M5 dao nguoc
+//     huong lenh HOAC khi RSI(M5) cat qua SMA45(RSI, M5) nguoc huong lenh (GetRsiSmaM5, tai
+//     su dung logic RSI/SMA cua MF_02 nhung tinh tren M5 cho khop khung dang dung de xet M5).
+void ExitPositionsOnReversal(int s, int shift, const CoralSnapshot &snap)
 {
+   double rsi5, rsi5MaFast, rsi5MaSlow;
+   GetRsiSmaM5(shift, rsi5, rsi5MaFast, rsi5MaSlow);
+
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
@@ -1075,13 +1116,15 @@ void ExitPositionsOnReversal(int s, const CoralSnapshot &snap)
       bool isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
       bool atBreakeven = IsPositionAtBreakeven();
       bool m5Reversed  = isBuy ? snap.downM5 : snap.upM5;
+      bool rsiReversed = isBuy ? (rsi5 < rsi5MaSlow) : (rsi5 > rsi5MaSlow);
       // doc truoc khi close - sau khi close position khong con select duoc nua
       double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
       double slNow       = PositionGetDouble(POSITION_SL);
 
-      // da breakeven -> gong lai, chi thoat khi M5 dao chieu; chua breakeven -> giu hanh vi cu (M1)
-      bool   reversed = atBreakeven ? m5Reversed : (isBuy ? snap.downNow : snap.upNow);
-      string tfName   = !atBreakeven ? "M1" : "M5";
+      // da breakeven -> gong lai, thoat khi M5 dao chieu HOAC RSI(M5) cat SMA45 nguoc huong;
+      // chua breakeven -> giu hanh vi cu (M1)
+      bool   reversed = atBreakeven ? (m5Reversed || rsiReversed) : (isBuy ? snap.downNow : snap.upNow);
+      string tfName   = !atBreakeven ? "M1" : (m5Reversed ? "M5" : "RSI(M5) cat SMA45");
 
       Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
             ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
@@ -1222,16 +1265,19 @@ void ManageOpenPositions(int s)
 //    nhan). BUY khi Coral M1 vua chuyen sang uptrend (up hien tai, khong up nen truoc) VA
 //    ca M5, M15 cung dang uptrend. Tuong tu cho SELL. MF_02 AND them dieu kien RSI(M1):
 //    rsi > SMA45(rsi) cho buy, rsi < SMA45(rsi) cho sell. MF_06 AND them dieu kien Efficiency
-//    Ratio hien tai (EfficiencyRatio(InpERtf, InpERPeriod, 1)) >= 0.1 (useErEntryFilter,
-//    xem OpenOrder) - chi vao lenh khi thi truong du "hieu qua"/trending, tranh vao lenh
-//    luc gia di ngang/nhieu.
+//    Ratio hien tai (EfficiencyRatio(InpERtf, InpERPeriod, 1)) nam trong khoang (0.1, 0.4]
+//    (useErEntryFilter, xem OpenOrder) - chi vao lenh khi thi truong du "hieu qua"/trending
+//    nhung chua qua "nong" (er qua cao co the la bien dong bat thuong/tin tuc), tranh vao
+//    lenh luc gia di ngang/nhieu (er thap) hoac qua cuc doan (er cao).
 //
 // 2. Thoat lenh khi dao chieu - 3 kieu (ENUM_EXIT_MODE):
 //    - EXIT_LEGACY_CLOSE_ALL (MF_01/MF_02/MF_04): theo doi previousPosition rieng tung
 //      chien luoc, M1 Coral dao chieu nguoc position gan nhat -> dong HET lenh cua chien
 //      luoc do, khong xet lai/lo tung lenh.
 //    - EXIT_PER_POSITION_M1_M5 (MF_03): xet tung lenh rieng - chua breakeven -> thoat theo
-//      M1 (cat lo som); da breakeven -> thoat theo M5 (gong lai, tranh nhieu M1).
+//      M1 (cat lo som); da breakeven -> thoat theo M5 (gong lai, tranh nhieu M1) HOAC khi
+//      RSI(M5) cat qua SMA45(RSI, M5) nguoc huong lenh (GetRsiSmaM5, tai su dung logic
+//      RSI/SMA cua MF_02 nhung tinh tren M5).
 //    - EXIT_STREAK_GUARDED_CLOSE_ALL (MF_05, CloseReversedPositions): giong dieu kien kich
 //      hoat cua EXIT_LEGACY_CLOSE_ALL (M1 dao chieu nguoc previousPosition), nhung xet tung
 //      lenh rieng: lai tinh theo KHOANG CACH GIA (gia hien tai so voi entry, KHONG dung

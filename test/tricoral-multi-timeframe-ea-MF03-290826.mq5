@@ -58,6 +58,15 @@ input double          InpERRank     = 0.50;        // Nguong tham khao (chua dun
 input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram
 
 //=============================================================================
+// INPUTS (RSI M5 - copy logic tinh tu MF_02: rsi va 2 duong SMA cua rsi, GOI la "ma/ema"
+// nhung ban chat la SMA (trung binh cong don gian), khong phai EMA that. Dung de thoat lenh
+// da breakeven trong ExitPositionsOnReversal, KHONG dung de loc tin hieu vao lenh)
+//=============================================================================
+input int InpRsiPeriod = 9;   // RSI period (M5)
+input int InpMaFast    = 9;   // SMA nhanh cua RSI, "ema9" (M5)
+input int InpMaSlow    = 45;  // SMA cham cua RSI, "ema45" (M5)
+
+//=============================================================================
 // GLOBALS
 //=============================================================================
 double   g_tradeLotSize     = 0;
@@ -70,7 +79,7 @@ datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (th
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1;
+int g_hATR_M1, g_hADX_M1, g_hRsiM5;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 //=============================================================================
@@ -87,18 +96,19 @@ int OnInit()
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   
+   g_hRsiM5    = iRSI(_Symbol, PERIOD_M5, InpRsiPeriod, PRICE_CLOSE);
+
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
    g_hCoralM30 = iCustom(_Symbol, PERIOD_M30, InpCoralIndicatorName, true, 14);
    g_hCoralH1  = iCustom(_Symbol, PERIOD_H1,  InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM5==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
-       Print("Failed to create ATR/ADX/Coral indicator handle(s) for ", _Symbol);
+       Print("Failed to create ATR/ADX/RSI/Coral indicator handle(s) for ", _Symbol);
       return INIT_FAILED;
    }
 
@@ -112,6 +122,7 @@ void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
    IndicatorRelease(g_hADX_M1);
+   IndicatorRelease(g_hRsiM5);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
    IndicatorRelease(g_hCoralM15);
@@ -555,17 +566,50 @@ double CalcOrderVolume(bool isBuy)
    return g_tradeLotSize * g_lotMultiplier;
 }
 
+// RSI + SMA(RSI) HELPERS (M1) - copy logic tinh tu MF_02 (GetRsiSma). Duoc goi la "ma/ema9"
+// va "ma/ema45" nhung ban chat la SMA (trung binh cong don gian cua chuoi RSI), KHONG phai
+// EMA that. Dung de thoat lenh da breakeven trong ExitPositionsOnReversal.
+// Lay RSI va 2 duong SMA (nhanh=InpMaFast, cham=InpMaSlow) cua RSI tai 1 shift, khung M5
+void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
+{
+   int need = InpMaSlow + shift + 5;
+
+   double rsiBuf[];
+   ArraySetAsSeries(rsiBuf, true);
+   if(CopyBuffer(g_hRsiM5, 0, 0, need, rsiBuf) <= 0)
+   {
+      rsi = 0; maFast = 0; maSlow = 0;
+      return;
+   }
+
+   rsi = rsiBuf[shift];
+
+   double sumF = 0;
+   for(int i = shift; i < shift + InpMaFast; i++) sumF += rsiBuf[i];
+   maFast = sumF / InpMaFast;
+
+   double sumS = 0;
+   for(int j = shift; j < shift + InpMaSlow; j++) sumS += rsiBuf[j];
+   maSlow = sumS / InpMaSlow;
+}
+
 // Thoát lệnh khi Coral đảo chiều ngược hướng lệnh. Khung thời gian dùng để xét đảo chiều
 // phụ thuộc trạng thái của TỪNG lệnh:
 //   - Lệnh CHƯA breakeven (SL chưa về entry): xét Coral M1 -> thoát nhanh, cắt lỗ sớm.
-//   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, chỉ thoát khi Coral M5 đảo
-//     chiều ngược hướng lệnh.
+//   - Lệnh ĐÃ breakeven (SL đã về entry, rủi ro = 0): gồng lãi, thoát khi Coral M5 đảo
+//     chiều ngược hướng lệnh HOẶC khi RSI(M5) cắt qua SMA45(RSI) ngược hướng lệnh (giống
+//     điều kiện lọc vào lệnh của MF_02, dùng ngược lại làm tín hiệu thoát).
 void ExitPositionsOnReversal(int shift)
 {
    bool upM1   = IsCoralUp(PERIOD_M1, shift);
    bool downM1 = IsCoralDown(PERIOD_M1, shift);
    bool upM5   = IsCoralUp(PERIOD_M5, shift);
    bool downM5 = IsCoralDown(PERIOD_M5, shift);
+
+   double rsi, rsiMaFast, rsiMaSlow;
+   GetRsiSma(shift, rsi, rsiMaFast, rsiMaSlow);
+   Print("ExitPositionsOnReversal RSI(M5) snapshot - rsi=", DoubleToString(rsi, 2),
+         " maSlow=", DoubleToString(rsiMaSlow, 2));
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -577,13 +621,15 @@ void ExitPositionsOnReversal(int shift)
       bool isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
       bool atBreakeven = IsPositionAtBreakeven();
       bool m5Reversed  = isBuy ? downM5 : upM5;
+      bool rsiReversed = isBuy ? (rsi < rsiMaSlow) : (rsi > rsiMaSlow);
       // doc truoc khi close - sau khi close position khong con select duoc nua
       double entryPrice  = PositionGetDouble(POSITION_PRICE_OPEN);
       double slNow       = PositionGetDouble(POSITION_SL);
 
-      // da breakeven -> gong lai, chi thoat khi M5 dao chieu; chua breakeven -> giu hanh vi cu (M1)
-      bool   reversed  = atBreakeven ? m5Reversed : (isBuy ? downM1 : upM1);
-      string tfName    = !atBreakeven ? "M1" : "M5";
+      // da breakeven -> gong lai, thoat khi M5 dao chieu HOAC RSI cat SMA45 nguoc huong;
+      // chua breakeven -> giu hanh vi cu (M1)
+      bool   reversed  = atBreakeven ? (m5Reversed || rsiReversed) : (isBuy ? downM1 : upM1);
+      string tfName    = !atBreakeven ? "M1" : (m5Reversed ? "M5" : "RSI cat SMA45");
 
       Print("ExitPositionsOnReversal #", ticket, " ", (isBuy ? "BUY" : "SELL"),
             ": atBreakeven=", atBreakeven, " -> xet dao chieu tren ", tfName,
@@ -744,9 +790,11 @@ void NotifySidewayMarket()
 //      - CHƯA breakeven (còn đang rủi ro): xét Coral M1. M1 đảo ngược hướng lệnh là đóng
 //        ngay -> thoát nhanh, cắt lỗ sớm, giữ nguyên hành vi cũ.
 //      - ĐÃ breakeven (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, BỎ QUA tín hiệu đảo
-//        chiều M1, chỉ đóng khi Coral M5 đảo ngược hướng lệnh. M5 chậm hơn nên lệnh không bị
-//        nhiễu M1 đá ra sớm, để lãi chạy tiếp; nếu giá quay đầu thật thì xấu nhất là chạm SL
-//        ở entry -> hòa vốn.
+//        chiều M1, đóng khi Coral M5 đảo ngược hướng lệnh HOẶC khi RSI(M5) cắt qua SMA45
+//        (RSI) ngược hướng lệnh (GetRsiSma, copy logic từ MF_02 - dùng ngược lại điều kiện
+//        lọc vào lệnh của MF_02 làm tín hiệu thoát). M5 chậm hơn nên lệnh không bị nhiễu M1
+//        đá ra sớm; RSI cắt SMA45 là tín hiệu bổ sung phát hiện động lượng đã đảo trước khi
+//        Coral M5 kịp đổi màu. Nếu giá quay đầu thật thì xấu nhất là chạm SL ở entry -> hòa vốn.
 //    Lưu ý: tín hiệu đảo chiều đọc ở shift=1 (nến đã đóng) trên cả M1 lẫn M5, tránh
 //    repaint; nhưng vì hàm chỉ chạy khi có nến M1 mới, tín hiệu M5 được kiểm tra lại mỗi
 //    phút chứ không phải chỉ mỗi 5 phút.

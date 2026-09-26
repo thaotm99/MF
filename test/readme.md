@@ -65,8 +65,8 @@ khi vào lệnh. MF_02 có thêm bộ lọc RSI, MF_06 có thêm bộ lọc Effi
 | Tiêu chí | MF_01 | MF_02 | MF_03 | MF_04 | MF_05 | MF_06 |
 |---|---|---|---|---|---|---|
 | Tín hiệu Coral 3TF (M1/M5/M15) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bộ lọc thêm | — | RSI(9) vs SMA45(RSI) | — | — | — | Efficiency Ratio ≥ 0.1 |
-| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng | Đóng **hết** ngay (không xét lãi/lỗ) |
+| Bộ lọc thêm | — | RSI(9) vs SMA45(RSI) | — | — | — | Efficiency Ratio ∈ (0.1, 0.4] |
+| **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 hoặc RSI(M5)×SMA45 | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng | Đóng **hết** ngay (không xét lãi/lỗ) |
 | **Trailing stop** | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) | Chỉ breakeven (không trail tiếp) | Chỉ breakeven (không trail tiếp) | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) |
 | TrailDistance | 10 | 10 | 10 | 10 | 10 | 10 |
 | SlSpacingDistance | 8 | 8 | 8 | 8 | 8 | 8 |
@@ -80,7 +80,7 @@ khi vào lệnh. MF_02 có thêm bộ lọc RSI, MF_06 có thêm bộ lọc Effi
 **Điểm giống nhau nổi bật:** MF_01 là "bản gốc" — MF_02 = MF_01 + RSI filter; MF_04 = MF_01
 nhưng trailing dừng ở breakeven (không trail tiếp, giống MF_03); MF_05 = MF_01 với logic
 đóng lệnh thông minh hơn (xét lãi/lỗ + streak); MF_06 = MF_01 + bộ lọc Efficiency Ratio
-(chỉ vào lệnh khi `er >= 0.1`, ngưỡng cố định, không qua input). MF_03 là biến thể khác biệt
+(chỉ vào lệnh khi `er` ∈ (0.1, 0.4], ngưỡng cố định, không qua input). MF_03 là biến thể khác biệt
 nhất: vừa đổi cách đóng lệnh (theo từng lệnh, không đóng hết) vừa đổi trailing (dừng ở
 breakeven) vừa nới lỏng ngưỡng giới hạn lãi ($200/$70 thay vì $100/$30).
 
@@ -115,7 +115,7 @@ File: `tricoral-multi-timeframe-ea-MF02-27082026.mq5`
   SELL cần thêm `rsi < SMA45(rsi)`.
 - Mục đích: lọc bớt tín hiệu Coral "yếu" bằng cách yêu cầu RSI cũng đồng thuận hướng.
 
-### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 khi đã hoà vốn)
+### MF_03 — Thoát lệnh riêng từng vị thế (M1 khi rủi ro / M5 hoặc RSI khi đã hoà vốn)
 
 File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
 
@@ -127,9 +127,12 @@ File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
   breakeven hay chưa (`IsPositionAtBreakeven` — SL đã kéo về entry chưa):
   - **Chưa breakeven** (còn rủi ro): xét Coral **M1** — M1 đảo ngược hướng lệnh là đóng ngay
     → cắt lỗ sớm.
-  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, chỉ
-    đóng khi Coral **M5** đảo ngược hướng lệnh. M5 chậm hơn M1 nên lệnh không bị nhiễu ngắn
-    hạn đá ra sớm; xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
+  - **Đã breakeven** (SL ở entry, rủi ro = 0): chuyển sang gồng lãi, bỏ qua tín hiệu M1, đóng
+    khi Coral **M5** đảo ngược hướng lệnh **HOẶC** khi **RSI(M5) cắt qua SMA45(RSI, M5)**
+    ngược hướng lệnh (`GetRsiSma`/`GetRsiSmaM5` — tái sử dụng đúng công thức RSI/SMA45 của
+    MF_02, nhưng tính trên khung **M5** thay vì M1 để khớp với khung đang dùng để xét đảo
+    chiều ở giai đoạn này). M5/RSI chậm hơn M1 nên lệnh không bị nhiễu ngắn hạn đá ra sớm;
+    xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
 - **Trailing** (`TrailingStop`, chỉ 1 giai đoạn breakeven): kéo SL về entry khi lãi đủ
   `InpTrailDistance` rồi **dừng lại**, không bám tiếp SL theo giá như MF_01 — vì việc "gồng
   lãi" sau breakeven đã chuyển hẳn sang nghe tín hiệu M5 ở `ExitPositionsOnReversal`.
@@ -188,11 +191,13 @@ File: `tricoral-multi-timeframe-ea-MF06-220926.mq5`
 - Giống **hệt MF_01** về tín hiệu Coral, cách đóng lệnh khi đảo chiều (`CloseAllPositions()`)
   và trailing (2 giai đoạn). Khác duy nhất ở điều kiện vào lệnh.
 - **Bộ lọc Efficiency Ratio** (`OpenOrder`, ngay sau bước kiểm tra ATR): tính
-  `EfficiencyRatio(InpERtf, InpERPeriod, 1)` — nếu `er < 0.1` thì bỏ qua tín hiệu (log +
-  Telegram), không vào lệnh. Ngưỡng `0.1` **cố định trong code**, không qua input (khác
-  `InpERRank` — input đó chưa được dùng ở đâu).
-- Ý tưởng: chỉ vào lệnh khi thị trường đủ "hiệu quả"/trending (ER cao), tránh vào lệnh lúc
-  giá đi ngang/nhiễu — ngược với `NotifySidewayMarket` (chỉ cảnh báo khi `er` **thấp**).
+  `EfficiencyRatio(InpERtf, InpERPeriod, 1)` — nếu `er < 0.1` **hoặc** `er > 0.4` thì bỏ qua
+  tín hiệu (log + Telegram), không vào lệnh. Chỉ vào lệnh khi `er` nằm trong khoảng
+  `(0.1, 0.4]`. Cả 2 ngưỡng **cố định trong code**, không qua input (khác `InpERRank` —
+  input đó chưa được dùng ở đâu).
+- Ý tưởng: chỉ vào lệnh khi thị trường đủ "hiệu quả"/trending nhưng chưa quá cực đoan —
+  tránh cả 2 thái cực: đi ngang/nhiễu (`er` thấp, giống `NotifySidewayMarket`) và biến động
+  bất thường/quá nóng (`er` quá cao).
 - Trong **file gộp**, cờ bật/tắt bộ lọc này là field `useErEntryFilter` trong
   `StrategyConfig`, chỉ `true` cho MF_06; các chiến lược khác đều `false`.
 
@@ -210,7 +215,7 @@ File: `tricoral-multi-timeframe-ea-MF06-220926.mq5`
   - `TRAIL_BREAKEVEN_ONLY` — MF_03 / MF_04.
   - `TRAIL_NONE` — hiện không chiến lược nào dùng, để sẵn cho chiến lược tương lai không cần trailing.
 - Bộ lọc thêm trước khi vào lệnh: `useRsiFilter` (`true` cho MF_02) và `useErEntryFilter`
-  (`true` cho MF_06, ngưỡng cố định `er >= 0.1`) trong `StrategyConfig`.
+  (`true` cho MF_06, ngưỡng cố định `er` ∈ (0.1, 0.4]) trong `StrategyConfig`.
 - Mỗi chiến lược có magic + comment lệnh riêng (`IsBotPosition(s)` check cả 2 lớp), giới hạn
   lãi/lỗ ngày + khung giờ tính riêng theo magic từng chiến lược — chạm ngưỡng chỉ chặn
   `OpenOrder` của chiến lược đó, không ảnh hưởng chiến lược khác.

@@ -416,6 +416,13 @@ void OpenOrder(int orderType, int shift)
       return;
    }
 
+   if(er > 0.4)
+   {
+      Print(label, " signal skipped on ", _Symbol, ": ER too high (", DoubleToString(er, 2), " > 0.4)");
+      SendTelegram("Signal: " + label + " %0A ER: " + DoubleToString(er, 2));
+      return;
+   }
+
    // SL qua xa -> cap InpSlSpacingDistance
    if(slDistance > InpSlSpacingDistance) sl = isBuy ? entryPrice - InpSlSpacingDistance : entryPrice + InpSlSpacingDistance;
 
@@ -712,6 +719,10 @@ void NotifySidewayMarket()
 //    (14 nến M1), nếu khoảng cách SL quá xa thì cap lại bằng InpSlSpacingDistance. TP đặt
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
+//    Bộ lọc riêng của MF_06: sau bước ATR, tính Efficiency Ratio hiện tại
+//    (EfficiencyRatio(InpERtf, InpERPeriod, 1)) — chỉ vào lệnh khi giá trị này nằm trong
+//    khoảng (0.1, 0.4] (ngưỡng cố định trong code, không qua input); quá thấp = thị trường
+//    đi ngang/nhiễu, quá cao = biến động cực đoan — cả 2 trường hợp đều bỏ qua tín hiệu.
 //
 // 4. Trailing stop 2 giai đoạn (TrailingStop, chạy MỌI tick, không chờ nến mới):
 //      - Giai đoạn 1 (breakeven): khi lãi >= InpTrailDistance, kéo SL về đúng giá entry.
