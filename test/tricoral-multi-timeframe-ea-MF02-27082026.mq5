@@ -429,12 +429,12 @@ void OpenOrder(int orderType, int shift)
    // TP co dinh cach entry InpTakeProfitDistance gia: BUY cong them, SELL tru di
    double tp = isBuy ? entryPrice + InpTakeProfitDistance : entryPrice - InpTakeProfitDistance;
 
-   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+   double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
-   string orderComment = BOT_COMMENT_PREFIX + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
+   string orderComment = BOT_COMMENT_PREFIX + ",A: " + DoubleToString(atr, 1) + ",er15: " + er15Str + ",er5: " + er5Str;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -444,7 +444,7 @@ void OpenOrder(int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
       return;
    }
 
@@ -454,13 +454,13 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
    }
 
    g_previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed, ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
-         ", erK: ", erKStr, ", er: ", erStr);
+         ", er15: ", er15Str, ", er5: ", er5Str);
 }
 
 //=============================================================================
@@ -568,9 +568,11 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
+      double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+      double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
       SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
-         "-", DoubleToString(sl, 2), "-"));
+         "-", DoubleToString(sl, 2), "-") + "%0Aer15:   " + DoubleToString(er15, 2) + "%0Aer5:    " + DoubleToString(er5, 2));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print("TrailingStop #", ticket, ": Telegram notification sent");
@@ -725,17 +727,18 @@ void NotifySidewayMarket()
       return;
    }
 
-   double erK = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
 
    double atrBuf[]; ArraySetAsSeries(atrBuf, true);
    double atr = 0;
    if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
 
    SendTelegram("Sideway warning - " + BOT_COMMENT_PREFIX + " " + _Symbol + " %0A ATR: " + DoubleToString(atr, 1) +
-                " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
+                " %0A er15: " + DoubleToString(er15, 2) + " %0A er5: " + DoubleToString(er5, 2));
 
    g_lastSidewayNotifyTime = TimeCurrent();
-   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", erK=", DoubleToString(erK, 2), ", er=", DoubleToString(er, 2), ")");
+   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", er15=", DoubleToString(er15, 2), ", er5=", DoubleToString(er5, 2), ")");
 }
 
 //=============================================================================
@@ -789,8 +792,9 @@ void NotifySidewayMarket()
 //    thêm bước kiểm tra "có lệnh không phải của bot đang mở trên symbol" trước khi gọi
 //    trade.Buy/trade.Sell trong OpenOrder() để tránh rủi ro này trên tài khoản netting.
 //
-// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm erK/er, trail SL,
-//    tín hiệu bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
+// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm er15/er5, trail SL
+//    kèm er15/er5, tín hiệu bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram
+//    (SendTelegram).
 //
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
@@ -805,15 +809,15 @@ void NotifySidewayMarket()
 //    giờ kế tiếp. Vì luôn tính lại theo khung giờ hiện tại (không lưu trạng thái), ngưỡng
 //    tự động "reset" khi giờ server bước sang khung mới. Lệnh đang mở không bị đóng.
 //
-// 10. Efficiency Ratio: đo "độ hiệu quả" của xu hướng giá trên khung InpERtf (mặc định M5,
-//     độc lập với Coral M1/M5/M15).
-//     - Trong OpenOrder: ghi 2 giá trị (làm tròn 2 chữ số thập phân) vào comment lệnh + gửi
-//       Telegram khi mở lệnh - er (EfficiencyRatio, ER hiện tại tại shift=1) và erK (ERRank,
-//       xếp hạng ER hiện tại so với InpERLookback=300 giá trị ER quá khứ). CHƯA dùng để lọc
-//       tín hiệu vào lệnh (input InpERRank chưa được tham chiếu ở đâu khác).
+// 10. Efficiency Ratio: đo "độ hiệu quả" của xu hướng giá (độc lập Coral M1/M5/M15), dùng ở
+//     2 nơi với 2 cách tính khác nhau:
+//     - Trong OpenOrder VÀ trail SL (TrailingStop): tính er15 = EfficiencyRatio(PERIOD_M15,
+//       InpERPeriod, 1) và er5 = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1) - 2 khung CỐ ĐỊNH,
+//       không qua InpERtf. Ghi vào comment lệnh (",er15: x.xx,er5: x.xx") và gửi Telegram khi
+//       mở lệnh OK/FAILED cũng như mỗi lần trail SL. CHƯA dùng để lọc tín hiệu vào lệnh.
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
-//       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + erK +
-//       er), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,
+//       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + er15 +
+//       er5), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,
 //       g_lastSidewayNotifyTime) - độc lập hoàn toàn với các cooldown khác (trailing, v.v.)
 //       và không ảnh hưởng tới việc vào/đóng lệnh.
 //=============================================================================

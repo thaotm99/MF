@@ -205,10 +205,10 @@ string TelegramMsg(string title, string entry, string sl, string dist, string sw
    if(CopyBuffer(g_hADX_M1, 0, 1, 1, adxBuf) > 0) adx = adxBuf[0];
     bool upNowRSI    = IsRsiUp(PERIOD_M1, 1);
    bool downNowRSI  = IsRsiDown(PERIOD_M1, 1);
-        double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+        double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
 
 
@@ -220,10 +220,10 @@ string TelegramMsg(string title, string entry, string sl, string dist, string sw
         + "spread:    " + DoubleToString(spread, 1) + "%0A"
         + "adx:  $" + DoubleToString(adx, 2)  + "%0A"
         + "ATR:     " + atr + "%0A"
-        + "%0A upNowRSI: " + IntegerToString(upNowRSI) 
+        + "%0A upNowRSI: " + IntegerToString(upNowRSI)
         + "%0A downNowRSI: " + IntegerToString(downNowRSI)
-          + "%0A erKStr: " + IntegerToString(erKStr) 
-        + "%0A erStr: " + IntegerToString(erStr);
+          + "%0A er15: " + er15Str
+        + "%0A er5: " + er5Str;
 }
 
 
@@ -340,16 +340,16 @@ void OpenOrder(int orderType, int shift)
    double atr = atrBuf[0];
    bool upNowRSI    = IsRsiUp(PERIOD_M1, shift);
    bool downNowRSI  = IsRsiDown(PERIOD_M1, shift);
-     double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+     double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
 
    if(atr < 2)
    {
       Print("atr < 3: ");
-      SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atr, 2) + " %0A upNowRSI: " + IntegerToString(upNowRSI) + " %0A downNowRSI: " + IntegerToString(downNowRSI) ) + " %0A ek: " + erKStr + " %0A er: " + erStr;
+      SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atr, 2) + " %0A upNowRSI: " + IntegerToString(upNowRSI) + " %0A downNowRSI: " + IntegerToString(downNowRSI) ) + " %0A er15: " + er15Str + " %0A er5: " + er5Str;
       return;
    }
 
@@ -743,13 +743,13 @@ string createComment(string label)
    double atrBuf[]; ArraySetAsSeries(atrBuf, true);
    double atr = 0;
    if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
-    double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+    double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
 
-   return "ATR : " + DoubleToString(atr, 1)+ ", ek: " + erKStr + ", er: " + erStr;
+   return "ATR : " + DoubleToString(atr, 1)+ ", er15: " + er15Str + ", er5: " + er5Str;
 }
 
 

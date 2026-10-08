@@ -3,8 +3,8 @@
 
 // Tien to comment danh dau lenh cua bot (dong bo voi orderComment trong OpenOrder) - la ma
 // chien luoc, dung nhu 1 lop check bo sung ben canh magic number trong IsBotPosition,
-// KHONG thay the. Comment day du dang "MF_04,A: x.x,ek: x.xx,er: x.xx" (xem OpenOrder)
-#define BOT_COMMENT_PREFIX "MF_04"
+// KHONG thay the. Comment day du dang "MF_07,A: x.x,ek: x.xx,er: x.xx" (xem OpenOrder)
+#define BOT_COMMENT_PREFIX "MF_07"
 
 //=============================================================================
 // INPUTS
@@ -19,13 +19,13 @@
 input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong magic=0)
 
 //=============================================================================
-// INPUTS (trailing stop - chi breakeven, khong bam SL tiep sau do)
+// INPUTS (trailing stop)
 //=============================================================================
- double InpTrailDistance       = 10;  // Muc lai (theo gia) de keo SL ve entry, sau do dung han
+ double InpTrailDistance       = 10;  // Khoảng cách bám SL khi đã ở vùng dương
 input int    InpBreakevenTimeMinutes = 21;  // Lệnh mở quá N phút mà đang lãi > g_lotMultiplier*5 thì kéo SL về entry ngay, không cần đợi đủ InpTrailDistance
-input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them >= gia tri nay
-input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing
-input int    InpTrailModifyCooldown = 2;    // Giay toi thieu giua 2 lan THUC SU gui lenh sua SL len san (tach biet, khong lien quan thoi gian gui Telegram)
+input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
+input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
+input int    InpTrailModifyCooldown = 2;    // Giây tối thiểu giữa 2 lần THỰC SỰ gửi lệnh sửa SL lên sàn (tách biệt, không liên quan thời gian gửi Telegram)
 
 //=============================================================================
 // INPUTS (stop loss)
@@ -47,6 +47,14 @@ input double InpDailyMaxProfit = 100;  // Lãi tối đa trong ngày ($) - chạ
 // INPUTS (gioi han lai theo khung gio: 00h-6h / 6h-12h / 12h-24h)
 //=============================================================================
 input double InpTimeWindowMaxProfit = 30;  // Lãi tối đa trong 1 khung giờ ($) - chạm mức này thì dừng vào lệnh mới đến khi sang khung giờ kế tiếp
+
+//=============================================================================
+// INPUTS (RSI M1 - copy logic tinh tu rsi_dynamic_noti.mq5 (GetRsiMa): rsi va 2 duong SMA
+// cua rsi, GOI la "ma/ema" nhung ban chat la SMA (trung binh cong don gian), khong phai EMA that)
+//=============================================================================
+input int InpRsiPeriod = 9;   // RSI period (M1)
+input int InpMaFast    = 9;   // SMA nhanh cua RSI, "ema9" (M1)
+input int InpMaSlow    = 45;  // SMA cham cua RSI, "ema45" (M1)
 
 //=============================================================================
 // INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, chi de
@@ -72,7 +80,7 @@ datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (th
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1;
+int g_hATR_M1, g_hADX_M1, g_hRsiM1;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 //=============================================================================
@@ -89,18 +97,19 @@ int OnInit()
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   
+   g_hRsiM1    = iRSI(_Symbol, PERIOD_M1, InpRsiPeriod, PRICE_CLOSE);
+
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
    g_hCoralM30 = iCustom(_Symbol, PERIOD_M30, InpCoralIndicatorName, true, 14);
    g_hCoralH1  = iCustom(_Symbol, PERIOD_H1,  InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE || g_hRsiM1==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
-       Print("Failed to create ATR/ADX/Coral indicator handle(s) for ", _Symbol);
+       Print("Failed to create ATR/ADX/RSI/Coral indicator handle(s) for ", _Symbol);
       return INIT_FAILED;
    }
 
@@ -114,6 +123,7 @@ void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
    IndicatorRelease(g_hADX_M1);
+   IndicatorRelease(g_hRsiM1);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
    IndicatorRelease(g_hCoralM15);
@@ -200,8 +210,7 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
 //=============================================================================
 // TICK
 //=============================================================================
-// Mỗi tick: xử lý tín hiệu vào lệnh khi có nến M1 mới, sau đó trail SL (chỉ về breakeven)
-// cho tất cả lệnh đang mở của bot
+// Mỗi tick: xử lý tín hiệu vào lệnh khi có nến M1 mới, sau đó trail SL cho tất cả lệnh đang mở của bot
 void OnTick()
 {
    static datetime lastBarTime = 0;
@@ -228,8 +237,8 @@ void OnTick()
 //=============================================================================
 // SIGNAL
 //=============================================================================
-// Đọc trend Coral trên M1/M5/M15: đóng lệnh ngược hướng khi Coral M1 đảo chiều,
-// sau đó mở lệnh mới khi cả 3 khung đồng thuận hướng (buy/sell signal)
+// Đọc trend Coral trên M1/M5/M15: đóng lệnh ngược hướng khi Coral M1 đảo chiều, sau đó mở
+// lệnh mới khi cả 3 khung đồng thuận hướng VÀ RSI(M1) xác nhận theo đường SMA45 của RSI
 int ProcessSignal(int shift)
 {
    NotifySidewayMarket();   // canh bao rieng, doc lap voi tin hieu vao/dong lenh ben duoi
@@ -250,8 +259,15 @@ int ProcessSignal(int shift)
    Print("Coral trend snapshot - M1 up:", upNow, " M1 up(prev):", upPrev, " M5 up:", upM5, " M15 up:", upM15,
          " | M1 down:", downNow, " M1 down(prev):", downPrev, " M5 down:", downM5, " M15 down:", downM15);
 
-   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15);
-   bool sellSignal = (downNow && !downPrev && downM5 && downM15);
+   double rsi, rsiMaFast, rsiMaSlow;
+   GetRsiSma(shift, rsi, rsiMaFast, rsiMaSlow);
+   Print("RSI(M1) snapshot - rsi=", DoubleToString(rsi, 2), " ema9=", DoubleToString(rsiMaFast, 2),
+         " ema45=", DoubleToString(rsiMaSlow, 2));
+
+   double er = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+
+   bool buySignal  = (upNow   && !upPrev   && upM5   && upM15)   && (rsi > rsiMaSlow) && (er >= 0.1);
+   bool sellSignal = (downNow && !downPrev && downM5 && downM15) && (rsi < rsiMaSlow) && (er >= 0.1);
 
    if(buySignal)  OpenOrder((int)POSITION_TYPE_BUY,  shift);
    if(sellSignal) OpenOrder((int)POSITION_TYPE_SELL, shift);
@@ -450,33 +466,7 @@ void OpenOrder(int orderType, int shift)
 }
 
 //=============================================================================
-// VOLUME
-//=============================================================================
-// Tính khối lượng lệnh (lot): min lot của symbol nhân hệ số g_lotMultiplier
-double CalcOrderVolume(bool isBuy)
-{
-   return g_tradeLotSize * g_lotMultiplier;
-}
-
-// Đóng tất cả lệnh đang mở của bot (theo magic number), giữ nguyên lệnh thủ công
-void CloseAllPositions()
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(!PositionSelectByTicket(ticket)) continue;
-      if(!IsBotPosition()) continue;   // chi dong lenh cua bot, giu nguyen lenh thu cong
-
-      if(!trade.PositionClose(ticket))
-         { Print("Failed to close bot position, ticket=", ticket, ", error code: ", GetLastError()); ResetLastError(); }
-      else
-         Print("Bot position closed, ticket=", ticket);
-   }
-}
-
-//=============================================================================
-// TRAILING STOP (chi breakeven, khong bam SL tiep)
+// TRAILING STOP
 //=============================================================================
 // Kiểm tra SL mới có vi phạm stops level tối thiểu của broker không (quá gần giá hiện tại)
 bool StopsLevelOk(bool isBuy, double newSL, double bidNow, double askNow, double minStop)
@@ -484,8 +474,8 @@ bool StopsLevelOk(bool isBuy, double newSL, double bidNow, double askNow, double
    return isBuy ? (bidNow - newSL >= minStop) : (newSL - askNow >= minStop);
 }
 
-// Trail SL cho 1 lệnh của bot: kéo SL về entry (breakeven) khi lãi đủ InpTrailDistance rồi
-// DỪNG LẠI, không bám SL tiếp sau khi đã breakeven (khac MF_01/MF_02: khong co giai doan 2)
+// Trail SL cho 1 lệnh của bot: giai đoạn 1 kéo SL về entry (breakeven) khi lãi đủ InpTrailDistance,
+// giai đoạn 2 tiếp tục bám SL cách giá hiện tại InpTrailDistance khi SL đã >= entry
 void TrailingStop(ulong ticket)
 {
    if(!PositionSelectByTicket(ticket)) return;
@@ -503,7 +493,7 @@ void TrailingStop(ulong ticket)
    int    digits  = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
    double minStop = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
 
-   double profitDist       = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
+   double profitDist = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
 
    // Breakeven theo thoi gian: lenh mo qua InpBreakevenTimeMinutes phut VA dang lai
@@ -511,32 +501,53 @@ void TrailingStop(ulong ticket)
    bool timeBreakevenDue = (profitDist > g_lotMultiplier * 5) &&
       ((TimeCurrent() - (datetime)PositionGetInteger(POSITION_TIME)) >= InpBreakevenTimeMinutes * 60);
 
+   double newSL = 0;
+
+   // ----- GIAI DOAN 2: SL da >= entry -> trail theo 10 gia -----
    if(slAtOrAboveEntry)
    {
-      Print("TrailingStop #", ticket, ": SL da o entry (breakeven), khong trail them");
-      return;
+      newSL = isBuy ? NormalizeDouble(price - InpTrailDistance, digits)
+                    : NormalizeDouble(price + InpTrailDistance, digits);
+      Print("TrailingStop #", ticket, ": phase 2 (trail) -> candidate newSL=", DoubleToString(newSL, digits));
+
+      // chi doi SL theo huong co loi
+      bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
+                                 : (newSL >= NormalizeDouble(sl, digits));
+      if(worseOrEqual)
+      {
+         Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
+         return;
+      }
+
+      if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
+      {
+         return;
+      }
    }
-
-   if(profitDist < InpTrailDistance && !timeBreakevenDue)
+   // ----- GIAI DOAN 1: lai >= 10 gia, HOAC da mo qua InpBreakevenTimeMinutes phut va dang
+   // lai > g_lotMultiplier*5 -> keo SL ve entry (breakeven) -----
+   else if(profitDist >= InpTrailDistance || timeBreakevenDue)
    {
-      return;
+      newSL = NormalizeDouble(entryPrice, digits);
+      Print("TrailingStop #", ticket, ": phase 1 (breakeven) -> candidate newSL=", DoubleToString(newSL, digits));
+
+      // SL moi phai tot hon SL hien tai
+      bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
+                                 : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
+      if(worseOrEqual)
+      {
+         Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
+         return;
+      }
+
+      if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
+      {
+         return;
+      }
    }
-
-   double newSL = NormalizeDouble(entryPrice, digits);
-   Print("TrailingStop #", ticket, ": breakeven -> candidate newSL=", DoubleToString(newSL, digits));
-
-   // SL moi phai tot hon SL hien tai
-   bool worseOrEqual = isBuy ? (newSL <= NormalizeDouble(sl, digits))
-                              : (sl != 0 && newSL >= NormalizeDouble(sl, digits));
-   if(worseOrEqual)
+   else
    {
-      Print("TrailingStop #", ticket, ": skipped - newSL not better than current SL");
-      return;
-   }
-
-   if(!StopsLevelOk(isBuy, newSL, bidNow, askNow, minStop))
-   {
-      return;
+      return; // chua du dieu kien
    }
 
    // ----- Throttle: khong gui lenh sua SL len san qua nhanh (doc lap voi cooldown Telegram) -----
@@ -570,6 +581,33 @@ void TrailingStop(ulong ticket)
    }
 }
 
+
+//=============================================================================
+// VOLUME
+//=============================================================================
+// Tính khối lượng lệnh (lot): min lot của symbol nhân hệ số g_lotMultiplier
+double CalcOrderVolume(bool isBuy)
+{
+   return g_tradeLotSize * g_lotMultiplier;
+}
+
+// Đóng tất cả lệnh đang mở của bot (theo magic number), giữ nguyên lệnh thủ công
+void CloseAllPositions()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(!IsBotPosition()) continue;   // chi dong lenh cua bot, giu nguyen lenh thu cong
+
+      if(!trade.PositionClose(ticket))
+         { Print("Failed to close bot position, ticket=", ticket, ", error code: ", GetLastError()); ResetLastError(); }
+      else
+         Print("Bot position closed, ticket=", ticket);
+   }
+}
+
 //=============================================================================
 // CORAL HELPERS
 //=============================================================================
@@ -599,6 +637,35 @@ bool CoralBufferHasValue(ENUM_TIMEFRAMES timeframe, int bufferIndex, int shift)
 // Coral đang trong trend tăng (buffer 1) / trend giảm (buffer 2) tại shift truyền vào
 bool IsCoralUp(ENUM_TIMEFRAMES timeframe, int shift)   { return CoralBufferHasValue(timeframe, 1, shift); }
 bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasValue(timeframe, 2, shift); }
+
+//=============================================================================
+// RSI + SMA(RSI) HELPERS (M1) - copy logic tinh tu GetRsiMa trong rsi_dynamic_noti.mq5.
+// Duoc goi la "ma/ema9" va "ma/ema45" nhung ban chat la SMA (trung binh cong don gian
+// cua chuoi RSI), KHONG phai EMA that.
+//=============================================================================
+// Lay RSI va 2 duong SMA (nhanh=InpMaFast, cham=InpMaSlow) cua RSI tai 1 shift, khung M1
+void GetRsiSma(int shift, double &rsi, double &maFast, double &maSlow)
+{
+   int need = InpMaSlow + shift + 5;
+
+   double rsiBuf[];
+   ArraySetAsSeries(rsiBuf, true);
+   if(CopyBuffer(g_hRsiM1, 0, 0, need, rsiBuf) <= 0)
+   {
+      rsi = 0; maFast = 0; maSlow = 0;
+      return;
+   }
+
+   rsi = rsiBuf[shift];
+
+   double sumF = 0;
+   for(int i = shift; i < shift + InpMaFast; i++) sumF += rsiBuf[i];
+   maFast = sumF / InpMaFast;
+
+   double sumS = 0;
+   for(int j = shift; j < shift + InpMaSlow; j++) sumS += rsiBuf[j];
+   maSlow = sumS / InpMaSlow;
+}
 
 //=============================================================================
 // EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
@@ -685,6 +752,16 @@ void NotifySidewayMarket()
 //    -> Mục đích: chỉ vào lệnh đúng lúc M1 mới đổi chiều, nhưng phải được 2 khung lớn hơn
 //       xác nhận cùng hướng, tránh vào lệnh ngược trend chính.
 //
+// 1b. Bộ lọc RSI(M1) (GetRsiSma, copy logic từ rsi_dynamic_noti.mq5): tính RSI(InpRsiPeriod
+//    =9) và 2 đường SMA của RSI - "ema9" (InpMaFast) và "ema45" (InpMaSlow), thực chất là
+//    SMA chứ không phải EMA thật. Điều kiện BUY cần thêm rsi > ema45, SELL cần rsi < ema45
+//    (bổ sung AND với điều kiện Coral ở mục 1, không thay thế).
+//
+// 1c. Bộ lọc Efficiency Ratio ngay trong tín hiệu vào lệnh (ProcessSignal) - khác MF_06 (lọc
+//    trong OpenOrder): tính er = EfficiencyRatio(InpERtf, InpERPeriod, 1), yêu cầu er >= 0.1
+//    mới cho phép buySignal/sellSignal kích hoạt (bổ sung AND, không thay thế điều kiện Coral
+//    + RSI ở mục 1/1b). Mục đích: tránh vào lệnh khi thị trường đi ngang/kém hiệu quả (er thấp).
+//
 // 2. Đảo chiều vị thế: nếu đang giữ lệnh ngược với trend Coral M1 mới (vd đang SHORT mà
 //    M1 chuyển Up), đóng toàn bộ lệnh của bot trước (xem reversedAgainstPosition trong
 //    ProcessSignal) để tránh giữ lệnh sai hướng khi thị trường đã đảo chiều.
@@ -694,24 +771,27 @@ void NotifySidewayMarket()
 //    cố định cách entry InpTakeProfitDistance (BUY: entry+giá trị, SELL: entry-giá trị).
 //    Bỏ qua tín hiệu nếu ATR M1 quá thấp (<= 2) vì biên độ dao động không đủ để trade an toàn.
 //
-// 4. Trailing stop CHỈ breakeven (TrailingStop, chạy MỌI tick, không chờ nến mới): khi lãi
-//    >= InpTrailDistance, HOẶC khi lệnh đã mở quá InpBreakevenTimeMinutes phút (mặc định 21)
-//    và đang lãi > g_lotMultiplier*5 (xem timeBreakevenDue), kéo SL về đúng giá entry rồi
-//    DỪNG LẠI - không tiếp tục bám SL theo giá như MF_01/MF_02 (không có "giai đoạn 2").
-//    Trước khi đạt mốc breakeven, lệnh giữ
-//    nguyên SL/TP cố định đặt lúc OpenOrder(). Luôn kiểm tra stops level tối thiểu của broker
-//    (StopsLevelOk) trước khi gửi lệnh sửa SL, và throttle tối đa 1 lần sửa SL thực sự mỗi
-//    InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime) - độc lập với
-//    InpTrailNotifyCooldown (chỉ chi phối tần suất gửi Telegram).
+// 4. Trailing stop 2 giai đoạn (TrailingStop, chạy MỌI tick, không chờ nến mới):
+//      - Giai đoạn 1 (breakeven): khi lãi >= InpTrailDistance, kéo SL về đúng giá entry.
+//        Cũng kích hoạt sớm breakeven này (không cần đợi đủ InpTrailDistance) nếu lệnh đã
+//        mở quá InpBreakevenTimeMinutes phút (mặc định 21) và đang lãi > g_lotMultiplier*5 -
+//        xem timeBreakevenDue trong TrailingStop.
+//      - Giai đoạn 2 (trail): khi SL đã ở mức entry trở lên, tiếp tục bám SL cách giá
+//        hiện tại InpTrailDistance, chỉ đổi theo hướng có lợi và luôn kiểm tra stops
+//        level tối thiểu của broker (StopsLevelOk) trước khi gửi lệnh sửa SL.
+//      - Throttle gửi lệnh: dù giá cải thiện từng tick, chỉ THỰC SỰ gửi PositionModify()
+//        tối đa 1 lần mỗi InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime) để
+//        tránh spam request lên sàn khi giá chạy liên tục. Cooldown này độc lập hoàn toàn
+//        với InpTrailNotifyCooldown (chỉ chi phối tần suất gửi Telegram, không liên quan).
 //
 // 5. Volume: cố định = min lot của symbol nhân hệ số g_lotMultiplier (CalcOrderVolume),
 //    không còn tăng vol theo chuỗi lệnh cùng hướng (tính năng này đã bị loại bỏ).
 //
 // 6. Phân tách lệnh bot / lệnh thủ công: mọi lệnh bot mở đều được gán InpMagicNumber
-//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_04,A: x.x,ek: x.xx,
-//    er: x.xx" (BOT_COMMENT_PREFIX = "MF_04", xem OpenOrder). Mọi thao tác trail/đóng lệnh
+//    (trade.SetExpertMagicNumber trong OnInit) + comment dạng "MF_07,A: x.x,ek: x.xx,
+//    er: x.xx" (BOT_COMMENT_PREFIX = "MF_07", xem OpenOrder). Mọi thao tác trail/đóng lệnh
 //    đều đi qua IsBotPosition() để chỉ đụng tới lệnh có magic này VÀ comment bắt đầu bằng
-//    "MF_04", không đụng vào lệnh thủ công.
+//    "MF_07", không đụng vào lệnh thủ công.
 //    LƯU Ý quan trọng: cơ chế này chỉ đáng tin cậy trên tài khoản HEDGING. Trên tài
 //    khoản NETTING, MT5 chỉ cho 1 position/symbol - nếu bot gửi lệnh (Buy/Sell) trong
 //    lúc đang có lệnh thủ công trên cùng symbol, MT5 sẽ tự động gộp/netting 2 lệnh đó
@@ -719,14 +799,15 @@ void NotifySidewayMarket()
 //    thêm bước kiểm tra "có lệnh không phải của bot đang mở trên symbol" trước khi gọi
 //    trade.Buy/trade.Sell trong OpenOrder() để tránh rủi ro này trên tài khoản netting.
 //
-// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm er15/er5, tín hiệu
-//    bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram (SendTelegram).
+// 7. Thông báo: mọi sự kiện quan trọng (mở lệnh thành công/thất bại kèm er15/er5, trail SL
+//    kèm er15/er5, tín hiệu bị bỏ qua do ATR thấp, xuất không được) đều gửi qua Telegram
+//    (SendTelegram).
 //
 // 8. Giới hạn lãi/lỗ trong ngày (DailyLimitReached, gọi trong OpenOrder): tính tổng P/L
 //    (đã chốt + đang mở) của bot trong ngày server hiện tại. Nếu lỗ >= InpDailyMaxLoss
 //    ($40) hoặc lãi >= InpDailyMaxProfit ($100), bot NGỪNG mở lệnh mới cho đến hết ngày.
-//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được TrailingStop/CloseAllPositions quản lý
-//    bình thường, chỉ đường mở lệnh mới (OpenOrder) bị chặn.
+//    Lệnh đang mở KHÔNG bị đóng cưỡng bức - vẫn được TrailingStop/CloseAllPositions quản
+//    lý bình thường, chỉ đường mở lệnh mới (OpenOrder) bị chặn.
 //
 // 9. Giới hạn lãi theo khung giờ (TimeWindowLimitReached, gọi trong OpenOrder, bổ sung
 //    song song với mục 8 - không thay thế): 1 ngày chia làm 3 khung giờ server 00h-6h /
@@ -736,7 +817,8 @@ void NotifySidewayMarket()
 //    tự động "reset" khi giờ server bước sang khung mới. Lệnh đang mở không bị đóng.
 //
 // 10. Efficiency Ratio: đo "độ hiệu quả" của xu hướng giá (độc lập Coral M1/M5/M15), dùng ở
-//     2 nơi với 2 cách tính khác nhau:
+//     2 nơi với 2 cách tính khác nhau (bộ lọc ER riêng của MF_07 trong tín hiệu vào lệnh -
+//     xem mục 1c - vẫn tính riêng, không liên quan er15/er5 dưới đây):
 //     - Trong OpenOrder VÀ trail SL (TrailingStop): tính er15 = EfficiencyRatio(PERIOD_M15,
 //       InpERPeriod, 1) và er5 = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1) - 2 khung CỐ ĐỊNH,
 //       không qua InpERtf. Ghi vào comment lệnh (",er15: x.xx,er5: x.xx") và gửi Telegram khi
@@ -744,6 +826,7 @@ void NotifySidewayMarket()
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
 //       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + er15 +
 //       er5), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,
-//       g_lastSidewayNotifyTime) - không ảnh hưởng tới việc vào/đóng lệnh.
+//       g_lastSidewayNotifyTime) - độc lập hoàn toàn với các cooldown khác (trailing, v.v.)
+//       và không ảnh hưởng tới việc vào/đóng lệnh.
 //=============================================================================
 

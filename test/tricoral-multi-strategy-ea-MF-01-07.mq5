@@ -1,7 +1,7 @@
 #property strict
 #include <Trade\Trade.mqh>
 
-// EA gop 6 chien luoc Tricoral (MF_01..MF_06) vao 1 file. Moi chien luoc la 1 "config"
+// EA gop 7 chien luoc Tricoral (MF_01..MF_07) vao 1 file. Moi chien luoc la 1 "config"
 // bat/tat doc lap qua Inp<MaCode>_Enabled, co magic + volume + comment rieng, chay dong
 // thoi tren cung symbol khong dung nhau. Nguon goc tung chien luoc:
 //   MF_01 <- mt5/releases/tricoral-multi-timeframe-ea-MF01.mq5
@@ -13,13 +13,16 @@
 //            lenh lai dong ngay, lenh lo chi dong khi da co chuoi >= N deal dong gan nhat cung huong)
 //   MF_06 <- test/tricoral-multi-timeframe-ea-MF06-220926.mq5     (= MF_01 nhung them dieu kien vao lenh:
 //            chi vao lenh khi Efficiency Ratio hien tai (InpERtf/InpERPeriod) nam trong (0.1, 0.4])
+//   MF_07 <- test/tricoral-multi-timeframe-ea-MF07-08102026.mq5   (= MF_02 (RSI filter) them
+//            dieu kien vao lenh: Efficiency Ratio hien tai (InpERtf/InpERPeriod) >= 0.1, loc
+//            ngay trong tin hieu vao lenh - khac MF_06 loc trong OpenOrder va co ca nguong tren)
 //
 // LUU Y TRIEN KHAI: neu tai khoan dang co lenh mo tu ban EA rieng le cu (comment "ATR : x.x"),
 // EA nay se KHONG nhan dien duoc cac lenh do (comment prefix da doi thanh ma chien luoc,
 // vd "MF_01"). Nen dong het lenh bot cu truoc khi thay EA.
 
 //=============================================================================
-// INPUTS (dung chung cho ca 6 chien luoc)
+// INPUTS (dung chung cho ca 7 chien luoc)
 //=============================================================================
  string InpCoralIndicatorName = "Coral-custom";
  string InpTelegramToken         = "8696728373:AAFmkD2bLCRM2XviVvBtaSY2HGaoV4iY5cE";
@@ -32,14 +35,15 @@ input int    InpBreakevenTimeMinutes = 21;  // Lenh mo qua N phut ma dang lai > 
 
 //=============================================================================
 // INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, dung chung
-// ca 6 chien luoc. Dung de tinh/hien thi/gui Telegram + ghi vao comment lenh cho ca 6 chien
-// luoc; rieng MF_06 con dung nguong co dinh 0.1 de loc tin hieu vao lenh - xem OpenOrder)
+// ca 7 chien luoc. Dung de tinh/hien thi/gui Telegram + ghi vao comment lenh cho ca 7 chien
+// luoc; rieng MF_06 dung nguong co dinh 0.1 de loc tin hieu vao lenh (OpenOrder), MF_07 dung
+// nguong co dinh 0.1 ngay trong tin hieu vao lenh (ProcessStrategySignal) - xem muc 1)
 //=============================================================================
 input int             InpERPeriod   = 12;         // So nen dung tinh Efficiency Ratio
 input ENUM_TIMEFRAMES InpERtf       = PERIOD_M5;   // Khung thoi gian tinh ER (doc lap voi Coral)
 input int             InpERLookback = 300;         // So gia tri ER qua khu dung de xep hang
 input double          InpERRank     = 0.50;        // Nguong tham khao (chua dung de loc lenh)
-input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram, dung chung ca 6 chien luoc
+input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 2 lan gui canh bao sideway (ER thap) qua Telegram, dung chung ca 7 chien luoc
 
 //=============================================================================
 // MF_01 - Coral 3TF thuan, dong het lenh bot khi M1 dao chieu, trailing 2 giai doan
@@ -133,6 +137,22 @@ input double InpMF06_DailyMaxProfit      = 100;
 input double InpMF06_TimeWindowMaxProfit = 30;
 
 //=============================================================================
+// MF_07 - Coral 3TF + RSI(9)/SMA(9,45) filter (= MF_02), them dieu kien vao lenh: Efficiency
+// Ratio hien tai (InpERtf/InpERPeriod) >= 0.1, loc ngay trong tin hieu (khac MF_06 loc trong
+// OpenOrder va co ca nguong tren 0.4). Dong het lenh khi M1 dao chieu, trailing 2 giai doan.
+//=============================================================================
+input group "=== MF_07 ==="
+input bool   InpMF07_Enabled             = true;
+input long   InpMF07_Magic               = 20250812;
+input double InpMF07_VolMultiplier       = 1;
+input double InpMF07_SlSpacingDistance   = 8;
+input double InpMF07_TakeProfitDistance  = 50;
+input double InpMF07_TrailDistance       = 10;
+input double InpMF07_DailyMaxLoss        = 40;
+input double InpMF07_DailyMaxProfit      = 100;
+input double InpMF07_TimeWindowMaxProfit = 30;
+
+//=============================================================================
 // STRATEGY CONFIG
 //=============================================================================
 enum ENUM_TRAIL_MODE
@@ -158,6 +178,7 @@ struct StrategyConfig
    double          volMultiplier;        // he so nhan vol (min_lot * he so); dong thoi nhan vao nguong daily/time-window
    bool            useRsiFilter;
    bool            useErEntryFilter;     // chi vao lenh khi Efficiency Ratio hien tai nam trong (0.1, 0.4] (MF_06)
+   bool            useErSignalFilter;    // chi vao lenh khi Efficiency Ratio hien tai >= 0.1, loc ngay trong tin hieu (MF_07)
    ENUM_EXIT_MODE  exitMode;
    ENUM_TRAIL_MODE trailMode;
    double          slSpacingDistance;
@@ -173,7 +194,7 @@ struct StrategyConfig
                                           // hoac EXIT_STREAK_GUARDED_CLOSE_ALL
 };
 
-StrategyConfig g_strategies[6];
+StrategyConfig g_strategies[7];
 
 //=============================================================================
 // GLOBALS
@@ -202,6 +223,7 @@ void BuildStrategies()
    g_strategies[0].volMultiplier       = InpMF01_VolMultiplier;
    g_strategies[0].useRsiFilter        = false;
    g_strategies[0].useErEntryFilter    = false;
+   g_strategies[0].useErSignalFilter   = false;
    g_strategies[0].exitMode            = EXIT_LEGACY_CLOSE_ALL;
    g_strategies[0].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[0].slSpacingDistance   = InpMF01_SlSpacingDistance;
@@ -219,6 +241,7 @@ void BuildStrategies()
    g_strategies[1].volMultiplier       = InpMF02_VolMultiplier;
    g_strategies[1].useRsiFilter        = true;
    g_strategies[1].useErEntryFilter    = false;
+   g_strategies[1].useErSignalFilter   = false;
    g_strategies[1].exitMode            = EXIT_LEGACY_CLOSE_ALL;
    g_strategies[1].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[1].slSpacingDistance   = InpMF02_SlSpacingDistance;
@@ -236,6 +259,7 @@ void BuildStrategies()
    g_strategies[2].volMultiplier       = InpMF03_VolMultiplier;
    g_strategies[2].useRsiFilter        = false;
    g_strategies[2].useErEntryFilter    = false;
+   g_strategies[2].useErSignalFilter   = false;
    g_strategies[2].exitMode            = EXIT_PER_POSITION_M1_M5;
    g_strategies[2].trailMode           = TRAIL_BREAKEVEN_ONLY;
    g_strategies[2].slSpacingDistance   = InpMF03_SlSpacingDistance;
@@ -253,6 +277,7 @@ void BuildStrategies()
    g_strategies[3].volMultiplier       = InpMF04_VolMultiplier;
    g_strategies[3].useRsiFilter        = false;
    g_strategies[3].useErEntryFilter    = false;
+   g_strategies[3].useErSignalFilter   = false;
    g_strategies[3].exitMode            = EXIT_LEGACY_CLOSE_ALL;
    g_strategies[3].trailMode           = TRAIL_BREAKEVEN_ONLY;
    g_strategies[3].slSpacingDistance   = InpMF04_SlSpacingDistance;
@@ -270,6 +295,7 @@ void BuildStrategies()
    g_strategies[4].volMultiplier       = InpMF05_VolMultiplier;
    g_strategies[4].useRsiFilter        = false;
    g_strategies[4].useErEntryFilter    = false;
+   g_strategies[4].useErSignalFilter   = false;
    g_strategies[4].exitMode            = EXIT_STREAK_GUARDED_CLOSE_ALL;
    g_strategies[4].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[4].slSpacingDistance   = InpMF05_SlSpacingDistance;
@@ -287,6 +313,7 @@ void BuildStrategies()
    g_strategies[5].volMultiplier       = InpMF06_VolMultiplier;
    g_strategies[5].useRsiFilter        = false;
    g_strategies[5].useErEntryFilter    = true;
+   g_strategies[5].useErSignalFilter   = false;
    g_strategies[5].exitMode            = EXIT_LEGACY_CLOSE_ALL;
    g_strategies[5].trailMode           = TRAIL_TWO_STAGE;
    g_strategies[5].slSpacingDistance   = InpMF06_SlSpacingDistance;
@@ -297,9 +324,27 @@ void BuildStrategies()
    g_strategies[5].timeWindowMaxProfit = InpMF06_TimeWindowMaxProfit;
    g_strategies[5].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
    g_strategies[5].previousPosition    = "NONE";
+
+   g_strategies[6].code                = "MF_07";
+   g_strategies[6].enabled             = InpMF07_Enabled;
+   g_strategies[6].magic               = InpMF07_Magic;
+   g_strategies[6].volMultiplier       = InpMF07_VolMultiplier;
+   g_strategies[6].useRsiFilter        = true;
+   g_strategies[6].useErEntryFilter    = false;
+   g_strategies[6].useErSignalFilter   = true;
+   g_strategies[6].exitMode            = EXIT_LEGACY_CLOSE_ALL;
+   g_strategies[6].trailMode           = TRAIL_TWO_STAGE;
+   g_strategies[6].slSpacingDistance   = InpMF07_SlSpacingDistance;
+   g_strategies[6].takeProfitDistance  = InpMF07_TakeProfitDistance;
+   g_strategies[6].trailDistance       = InpMF07_TrailDistance;
+   g_strategies[6].dailyMaxLoss        = InpMF07_DailyMaxLoss;
+   g_strategies[6].dailyMaxProfit      = InpMF07_DailyMaxProfit;
+   g_strategies[6].timeWindowMaxProfit = InpMF07_TimeWindowMaxProfit;
+   g_strategies[6].holdStreakCount     = 0; // khong dung (exitMode khac STREAK_GUARDED)
+   g_strategies[6].previousPosition    = "NONE";
 }
 
-// Khoi tao EA: setup CTrade, tao handle chi bao dung chung (ATR/ADX/RSI/Coral M1-M5-M15), do config 6 chien luoc
+// Khoi tao EA: setup CTrade, tao handle chi bao dung chung (ATR/ADX/RSI/Coral M1-M5-M15), do config 7 chien luoc
 int OnInit()
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) { Print("Auto trading is disabled in terminal - EA init aborted"); return 0; }
@@ -420,7 +465,7 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
 }
 
 //=============================================================================
-// CORAL SNAPSHOT (doc 1 lan/tick moi, dung chung cho ca 6 chien luoc)
+// CORAL SNAPSHOT (doc 1 lan/tick moi, dung chung cho ca 7 chien luoc)
 //=============================================================================
 struct CoralSnapshot
 {
@@ -472,7 +517,7 @@ bool IsCoralDown(ENUM_TIMEFRAMES timeframe, int shift) { return CoralBufferHasVa
 // EFFICIENCY RATIO (ER) - do "hieu qua" cua xu huong gia: bien dong gia thuc te (disp) so
 // voi tong quang duong di cua gia (path) trong "period" nen gan nhat. ER cang gan 1 nghia
 // la gia di thang mot mach (trending manh), cang gan 0 nghia la gia di ngang (sideway/nhieu).
-// Dung chung ca 6 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
+// Dung chung ca 7 chien luoc (InpERPeriod/InpERtf/InpERLookback deu la input chung).
 //=============================================================================
 // Tinh ER tai 1 shift, tren khung thoi gian InpERtf (doc lap voi Coral M1/M5/M15).
 // Tra ve -1.0 neu tham so khong hop le (period<2, shift<0) hoac khong du du lieu/gia di
@@ -533,17 +578,18 @@ void NotifySidewayMarket()
       return;
    }
 
-   double erK = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
 
    double atrBuf[]; ArraySetAsSeries(atrBuf, true);
    double atr = 0;
    if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
 
    SendTelegram("Sideway warning - " + _Symbol + " %0A ATR: " + DoubleToString(atr, 1) +
-                " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
+                " %0A er15: " + DoubleToString(er15, 2) + " %0A er5: " + DoubleToString(er5, 2));
 
    g_lastSidewayNotifyTime = TimeCurrent();
-   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", erK=", DoubleToString(erK, 2), ", er=", DoubleToString(er, 2), ")");
+   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", er15=", DoubleToString(er15, 2), ", er5=", DoubleToString(er5, 2), ")");
 }
 
 //=============================================================================
@@ -668,6 +714,16 @@ void ProcessStrategySignal(int s, int shift, const CoralSnapshot &snap)
             " maFast=", DoubleToString(rsiMaFast, 2), " maSlow=", DoubleToString(rsiMaSlow, 2));
       buySignal  = buySignal  && (rsi > rsiMaSlow);
       sellSignal = sellSignal && (rsi < rsiMaSlow);
+   }
+
+   // MF_07: loc Efficiency Ratio ngay trong tin hieu vao lenh (khac MF_06 loc trong OpenOrder
+   // va co ca nguong tren) - chi can er >= 0.1, AND voi dieu kien Coral (+ RSI neu co) o tren
+   if(g_strategies[s].useErSignalFilter)
+   {
+      double erSignal = EfficiencyRatio(InpERtf, InpERPeriod, 1);
+      Print(g_strategies[s].code, " ER(signal) snapshot - er=", DoubleToString(erSignal, 2));
+      buySignal  = buySignal  && (erSignal >= 0.1);
+      sellSignal = sellSignal && (erSignal >= 0.1);
    }
 
    if(buySignal)  OpenOrder(s, (int)POSITION_TYPE_BUY,  shift);
@@ -856,12 +912,12 @@ void OpenOrder(int s, int orderType, int shift)
    // TP co dinh cach entry takeProfitDistance cua chien luoc
    double tp = isBuy ? entryPrice + g_strategies[s].takeProfitDistance : entryPrice - g_strategies[s].takeProfitDistance;
 
-   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+   double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
-   string orderComment = code + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
+   string orderComment = code + ",A: " + DoubleToString(atr, 1) + ",er15: " + er15Str + ",er5: " + er5Str;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -871,7 +927,7 @@ void OpenOrder(int s, int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
       return;
    }
 
@@ -889,13 +945,13 @@ void OpenOrder(int s, int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
    }
 
    g_strategies[s].previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed, ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
-         ", erK: ", erKStr, ", er: ", erStr);
+         ", er15: ", er15Str, ", er5: ", er5Str);
 }
 
 //=============================================================================
@@ -920,7 +976,7 @@ bool IsPositionAtBreakeven()
 }
 
 // Gui thong bao Telegram khi trail SL, chong spam bang InpTrailNotifyStep/InpTrailNotifyCooldown
-// (dung chung 1 bo dem cho ca 6 chien luoc, giong hanh vi ban goc)
+// (dung chung 1 bo dem cho ca 7 chien luoc, giong hanh vi ban goc)
 void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double oldSl, double newSL)
 {
    bool bigMove   = MathAbs(newSL - g_lastNotifiedSL) >= InpTrailNotifyStep;
@@ -928,9 +984,11 @@ void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double o
 
    if(bigMove && cooledOff)
    {
+      double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+      double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
       SendTelegram(TelegramMsg(g_strategies[s].code + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
-         "-", DoubleToString(oldSl, 2), "-"));
+         "-", DoubleToString(oldSl, 2), "-") + "%0Aer15:   " + DoubleToString(er15, 2) + "%0Aer5:    " + DoubleToString(er5, 2));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": Telegram notification sent");
@@ -1272,17 +1330,20 @@ void ManageOpenPositions(int s)
 //=============================================================================
 // Y TUONG KIEN TRUC CUA EA GOP (tong quan)
 //=============================================================================
-// 1. Tin hieu vao lenh (dung chung ca 6 chien luoc): Coral 3 khung M1 (chinh)/M5/M15 (xac
+// 1. Tin hieu vao lenh (dung chung ca 7 chien luoc): Coral 3 khung M1 (chinh)/M5/M15 (xac
 //    nhan). BUY khi Coral M1 vua chuyen sang uptrend (up hien tai, khong up nen truoc) VA
-//    ca M5, M15 cung dang uptrend. Tuong tu cho SELL. MF_02 AND them dieu kien RSI(M1):
-//    rsi > SMA45(rsi) cho buy, rsi < SMA45(rsi) cho sell. MF_06 AND them dieu kien Efficiency
-//    Ratio hien tai (EfficiencyRatio(InpERtf, InpERPeriod, 1)) nam trong khoang (0.1, 0.4]
-//    (useErEntryFilter, xem OpenOrder) - chi vao lenh khi thi truong du "hieu qua"/trending
-//    nhung chua qua "nong" (er qua cao co the la bien dong bat thuong/tin tuc), tranh vao
-//    lenh luc gia di ngang/nhieu (er thap) hoac qua cuc doan (er cao).
+//    ca M5, M15 cung dang uptrend. Tuong tu cho SELL. MF_02 VA MF_07 AND them dieu kien
+//    RSI(M1): rsi > SMA45(rsi) cho buy, rsi < SMA45(rsi) cho sell (useRsiFilter). MF_06 AND
+//    them dieu kien Efficiency Ratio hien tai (EfficiencyRatio(InpERtf, InpERPeriod, 1)) nam
+//    trong khoang (0.1, 0.4] (useErEntryFilter, loc trong OpenOrder) - chi vao lenh khi thi
+//    truong du "hieu qua"/trending nhung chua qua "nong" (er qua cao co the la bien dong bat
+//    thuong/tin tuc), tranh vao lenh luc gia di ngang/nhieu (er thap) hoac qua cuc doan (er
+//    cao). MF_07 AND them dieu kien Efficiency Ratio hien tai >= 0.1 (useErSignalFilter, loc
+//    ngay trong ProcessStrategySignal, khong co nguong tren nhu MF_06) - ket hop CA RSI filter
+//    (nhu MF_02) VA ER filter mot chieu nay.
 //
 // 2. Thoat lenh khi dao chieu - 3 kieu (ENUM_EXIT_MODE):
-//    - EXIT_LEGACY_CLOSE_ALL (MF_01/MF_02/MF_04): theo doi previousPosition rieng tung
+//    - EXIT_LEGACY_CLOSE_ALL (MF_01/MF_02/MF_04/MF_06/MF_07): theo doi previousPosition rieng tung
 //      chien luoc, M1 Coral dao chieu nguoc position gan nhat -> dong HET lenh cua chien
 //      luoc do, khong xet lai/lo tung lenh.
 //    - EXIT_PER_POSITION_M1_M5 (MF_03): xet tung lenh rieng - chua breakeven -> thoat theo
@@ -1304,14 +1365,14 @@ void ManageOpenPositions(int s)
 //    takeProfitDistance. Bo qua tin hieu neu ATR M1 < 2.
 //
 // 4. Trailing stop - 2 kieu dang dung (ENUM_TRAIL_MODE con TRAIL_NONE danh cho chien luoc
-//    tuong lai khong can trailing): TRAIL_TWO_STAGE (MF_01/MF_02/MF_05, breakeven roi bam SL
+//    tuong lai khong can trailing): TRAIL_TWO_STAGE (MF_01/MF_02/MF_05/MF_06/MF_07, breakeven roi bam SL
 //    tiep theo trailDistance), TRAIL_BREAKEVEN_ONLY (MF_03/MF_04, chi breakeven roi dung,
 //    khong bam SL tiep). Ca 2 ham TrailingStopTwoStage/TrailingStopBreakevenOnly chay MOI tick; de tranh spam
 //    PositionModify() len san khi gia chay lien tuc, chi THUC SU gui lenh sua SL toi da 1
 //    lan moi InpTrailModifyCooldown giay (mac dinh 2s, g_lastModifyTime dung chung moi
 //    chien luoc) - throttle nay doc lap hoan toan voi InpTrailNotifyCooldown (chi chi phoi
 //    tan suat gui Telegram).
-//    Breakeven theo thoi gian (dung chung ca 6 chien luoc, InpBreakevenTimeMinutes, mac dinh
+//    Breakeven theo thoi gian (dung chung ca 7 chien luoc, InpBreakevenTimeMinutes, mac dinh
 //    21 phut): neu lenh da mo qua N phut VA dang lai > volMultiplier*5 cua chien luoc, kich hoat breakeven ngay ca khi
 //    chua du trailDistance - xem timeBreakevenDue trong TrailingStopTwoStage/
 //    TrailingStopBreakevenOnly. Neu dang lo (chua ve lai entry) thi khong sua SL, tu thu lai
@@ -1320,7 +1381,7 @@ void ManageOpenPositions(int s)
 // 5. Volume: vol = min lot cua symbol * volMultiplier rieng tung chien luoc (input
 //    MFxx_VolMultiplier), khong tang theo chuoi lenh.
 //
-// 6. Phan tach lenh giua 6 chien luoc & lenh thu cong: moi chien luoc co magic rieng
+// 6. Phan tach lenh giua 7 chien luoc & lenh thu cong: moi chien luoc co magic rieng
 //    (InpMFxx_Magic) + moi lenh mo deu gan comment dung bang ma chien luoc (vd "MF_01",
 //    xem orderComment trong OpenOrder). IsBotPosition(s) check ca 2 lop nay. Moi thao tac trail/dong lenh
 //    deu di qua IsBotPosition(s) de chi dung tung lenh cua dung chien luoc.
@@ -1332,19 +1393,22 @@ void ManageOpenPositions(int s)
 //    tung chien luoc. Cham nguong chi chan OpenOrder cua chien luoc do, khong dong lenh
 //    dang mo, khong anh huong chien luoc khac.
 //
-// 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai, trail SL, thoat lenh,
-//    tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu de gan ma chien luoc.
+// 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai kem er15/er5, trail SL
+//    kem er15/er5, thoat lenh, tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu
+//    de gan ma chien luoc.
 //
-// 9. Efficiency Ratio (dung chung ca 6 chien luoc): do "do hieu qua" cua xu huong gia tren
-//    khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15).
-//    - Trong OpenOrder: ghi 2 gia tri (lam tron 2 chu so thap phan) vao comment lenh dang
-//      "MF_xx,A: x.x,ek: x.xx,er: x.xx" + gui Telegram khi mo lenh - er (EfficiencyRatio,
-//      ER hien tai tai shift=1) va erK (ERRank, xep hang ER hien tai so voi InpERLookback=300
-//      gia tri ER qua khu). CHUA dung de loc tin hieu vao lenh (input InpERRank chung chua
-//      duoc tham chieu o dau khac) - NGOAI TRU MF_06 (xem muc 1), dung nguong co dinh 0.1
-//      (khong qua InpERRank) de chan OpenOrder ngay sau buoc kiem tra ATR.
+// 9. Efficiency Ratio (dung chung ca 7 chien luoc), dung o nhieu noi voi cach tinh khac nhau:
+//    - Trong OpenOrder VA trail SL (NotifyTrailing): tinh er15 = EfficiencyRatio(PERIOD_M15,
+//      InpERPeriod, 1) va er5 = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1) - 2 khung CO DINH,
+//      khong qua InpERtf. Ghi vao comment lenh dang "MF_xx,A: x.x,er15: x.xx,er5: x.xx" + gui
+//      Telegram khi mo lenh OK/FAILED cung nhu moi lan trail SL. CHUA dung de loc tin hieu
+//      vao lenh - NGOAI TRU MF_06 va MF_07 (xem muc 1), nhung 2 chien luoc nay dung EfficiencyRatio
+//      tren InpERtf (MF_06) hoac tinh rieng trong ProcessStrategySignal (MF_07), KHONG lien
+//      quan er15/er5 o tren: MF_06 dung nguong co dinh (0.1, 0.4] de chan OpenOrder ngay sau
+//      buoc kiem tra ATR; MF_07 dung nguong co dinh >= 0.1 (khong co can tren) ngay trong
+//      ProcessStrategySignal, truoc khi goi OpenOrder.
 //    - Canh bao sideway (NotifySidewayMarket, goi trong OnTick moi nen M1 moi, 1 lan duy
-//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.05 thi gui Telegram (ATR + erK + er),
+//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.05 thi gui Telegram (ATR + er15 + er5),
 //      toi da 1 lan moi InpSidewayNotifyCooldown giay (mac dinh 1800s = 30 phut,
 //      g_lastSidewayNotifyTime) - khong anh huong toi viec vao/dong lenh cua bat ky chien
 //      luoc nao.

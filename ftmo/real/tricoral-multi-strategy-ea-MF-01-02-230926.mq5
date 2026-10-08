@@ -389,17 +389,18 @@ void NotifySidewayMarket()
       return;
    }
 
-   double erK = ERRank(InpERtf, InpERPeriod, InpERLookback);
+   double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
 
    double atrBuf[]; ArraySetAsSeries(atrBuf, true);
    double atr = 0;
    if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
 
    SendTelegram("Sideway warning - " + _Symbol + " %0A ATR: " + DoubleToString(atr, 1) +
-                " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
+                " %0A er15: " + DoubleToString(er15, 2) + " %0A er5: " + DoubleToString(er5, 2));
 
    g_lastSidewayNotifyTime = TimeCurrent();
-   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", erK=", DoubleToString(erK, 2), ", er=", DoubleToString(er, 2), ")");
+   Print("NotifySidewayMarket: sent Telegram (ATR=", DoubleToString(atr, 1), ", er15=", DoubleToString(er15, 2), ", er5=", DoubleToString(er5, 2), ")");
 }
 
 //=============================================================================
@@ -653,12 +654,12 @@ void OpenOrder(int s, int orderType, int shift)
    // TP co dinh cach entry takeProfitDistance cua chien luoc
    double tp = isBuy ? entryPrice + g_strategies[s].takeProfitDistance : entryPrice - g_strategies[s].takeProfitDistance;
 
-   double erK    = ERRank(InpERtf, InpERPeriod, InpERLookback);
-   double er     = EfficiencyRatio(InpERtf, InpERPeriod, 1);
-   string erKStr = DoubleToString(erK, 2);
-   string erStr  = DoubleToString(er, 2);
+   double er15    = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5     = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+   string er15Str = DoubleToString(er15, 2);
+   string er5Str  = DoubleToString(er5, 2);
 
-   string orderComment = code + ",A: " + DoubleToString(atr, 1) + ",ek: " + erKStr + ",er: " + erStr;
+   string orderComment = code + ",A: " + DoubleToString(atr, 1) + ",er15: " + er15Str + ",er5: " + er5Str;
    bool sent = isBuy ? trade.Buy(orderVol, _Symbol, entryPrice, sl, tp, orderComment)
                       : trade.Sell(orderVol, _Symbol, entryPrice, sl, tp, orderComment);
 
@@ -668,7 +669,7 @@ void OpenOrder(int s, int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
       return;
    }
 
@@ -711,13 +712,13 @@ void OpenOrder(int s, int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
+         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
    }
 
    g_strategies[s].previousPosition = isBuy ? "LONG" : "SHORT";
    Print(label, " order placed, ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
-         ", erK: ", erKStr, ", er: ", erStr);
+         ", er15: ", er15Str, ", er5: ", er5Str);
 }
 
 //=============================================================================
@@ -738,9 +739,11 @@ void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double o
 
    if(bigMove && cooledOff)
    {
+      double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+      double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
       SendTelegram(TelegramMsg(g_strategies[s].code + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
-         "-", DoubleToString(oldSl, 2), "-"));
+         "-", DoubleToString(oldSl, 2), "-") + "%0Aer15:   " + DoubleToString(er15, 2) + "%0Aer5:    " + DoubleToString(er5, 2));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": Telegram notification sent");
@@ -917,18 +920,18 @@ void ManageOpenPositions(int s)
 //    tung chien luoc. Cham nguong chi chan OpenOrder cua chien luoc do, khong dong lenh
 //    dang mo, khong anh huong chien luoc khac.
 //
-// 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai, trail SL, thoat lenh,
-//    tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu de gan ma chien luoc.
+// 8. Thong bao: moi su kien quan trong (mo lenh thanh cong/that bai kem er15/er5, trail SL
+//    kem er15/er5, thoat lenh, tin hieu bi bo qua, cham gioi han P/L) deu gui Telegram, tieu
+//    de gan ma chien luoc.
 //
-// 9. Efficiency Ratio (dung chung ca 2 chien luoc): do "do hieu qua" cua xu huong gia tren
-//    khung InpERtf (mac dinh M5, doc lap voi Coral M1/M5/M15).
-//    - Trong OpenOrder: ghi 2 gia tri (lam tron 2 chu so thap phan) vao comment lenh dang
-//      "MF_xx,A: x.x,ek: x.xx,er: x.xx" + gui Telegram khi mo lenh - er (EfficiencyRatio,
-//      ER hien tai tai shift=1) va erK (ERRank, xep hang ER hien tai so voi InpERLookback=300
-//      gia tri ER qua khu). CHUA dung de loc tin hieu vao lenh (input InpERRank chung chua
-//      duoc tham chieu o dau khac).
+// 9. Efficiency Ratio (dung chung ca 2 chien luoc), dung o 2 noi voi cach tinh khac nhau:
+//    - Trong OpenOrder VA trail SL (NotifyTrailing): tinh er15 = EfficiencyRatio(PERIOD_M15,
+//      InpERPeriod, 1) va er5 = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1) - 2 khung CO DINH,
+//      khong qua InpERtf. Ghi vao comment lenh dang "MF_xx,A: x.x,er15: x.xx,er5: x.xx" + gui
+//      Telegram khi mo lenh OK/FAILED cung nhu moi lan trail SL. CHUA dung de loc tin hieu
+//      vao lenh.
 //    - Canh bao sideway (NotifySidewayMarket, goi trong OnTick moi nen M1 moi, 1 lan duy
-//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.05 thi gui Telegram (ATR + erK + er),
+//      nhat khong phu thuoc chien luoc nao): neu 0<er<0.05 thi gui Telegram (ATR + er15 + er5),
 //      toi da 1 lan moi InpSidewayNotifyCooldown giay (mac dinh 1800s = 30 phut,
 //      g_lastSidewayNotifyTime) - khong anh huong toi viec vao/dong lenh cua bat ky chien
 //      luoc nao.
