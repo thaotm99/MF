@@ -217,14 +217,14 @@ int ProcessSignal(int shift)
    if (upNow  && g_hasSell)
    {
       // OpenOrder(POSITION_TYPE_BUY,  shift);
-      SendTelegram("Close SELL %0A------------------%0A Close: " +   Ask());
+      SendTelegram("Close SELL " + Symbol() + " %0A------------------%0A Close: " +   Ask());
       g_hasSell = false;
    }
 
    if (downNow  && g_hasBuy)
    {
       // OpenOrder(POSITION_TYPE_BUY,  shift);
-      SendTelegram("Close BUY %0A------------------%0A Close: " +   Bid());
+      SendTelegram("Close BUY " + Symbol() + " %0A------------------%0A Close: " +   Bid());
       g_hasBuy  = false;
    }
 
@@ -249,13 +249,13 @@ int ProcessSignal(int shift)
    if (upNow   && upMedium   && upHigh   && !g_hasBuy)
    {
       // OpenOrder(POSITION_TYPE_BUY,  shift);
-      SendTelegram("SIGNAL BUY %0A------------------%0A" + " Entry: " + Ask()  + " atr: " + atr  );
+      SendTelegram("SIGNAL BUY " + Symbol() + " %0A------------------%0A" + " Entry: " + Ask()  + " atr: " + atr  );
       g_hasBuy  = true;
    }
    if (downNow && downMedium && downHigh && !g_hasSell)
    {
       // OpenOrder(POSITION_TYPE_SELL, shift);
-      SendTelegram("SIGNAL SELL %0A------------------%0A" + " Entry: " + Bid() + " atr: " + atr );
+      SendTelegram("SIGNAL SELL " + Symbol() + " %0A------------------%0A" + " Entry: " + Bid() + " atr: " + atr );
       g_hasSell = true;
    }
 

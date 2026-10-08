@@ -33,6 +33,7 @@ input int             InpSidewayNotifyCooldown = 1800;   // Giay toi thieu giua 
 // INPUTS (trailing stop)
 //=============================================================================
  double InpTrailDistance       = 10.0;  // Khoảng cách bám SL khi đã ở vùng dương
+input int    InpBreakevenTimeMinutes = 21;  // Lệnh mở quá N phút mà đang lãi > g_lotMultiplier*5 thì kéo SL về entry ngay, không cần đợi đủ InpTrailDistance
 input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
 input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
 
@@ -319,7 +320,7 @@ void OpenOrder(int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string label      = isBuy ? "Buy" : "Sell";
+   string label      = _Symbol + " " + (isBuy ? "Buy" : "Sell");
 
 
 
@@ -436,6 +437,11 @@ void TrailingStop(ulong ticket)
    double profitDist = isBuy ? (price - entry) : (entry - price);  // lãi hiện tại (theo giá)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entry) : (sl <= entry && sl != 0);
 
+   // Breakeven theo thoi gian: lenh mo qua InpBreakevenTimeMinutes phut VA dang lai
+   // > g_lotMultiplier*5 thi kich hoat breakeven ngay, khong can doi du InpTrailDistance
+   bool timeBreakevenDue = (profitDist > g_lotMultiplier * 5) &&
+      ((TimeCurrent() - (datetime)PositionGetInteger(POSITION_TIME)) >= InpBreakevenTimeMinutes * 60);
+
    double newSL = 0;
 
    // ----- GIAI DOAN 2: SL da >= entry -> trail theo 10 gia -----
@@ -452,8 +458,9 @@ void TrailingStop(ulong ticket)
       if(isBuy  && bidNow - newSL < minStop) return;
       if(!isBuy && newSL - askNow < minStop) return;
    }
-   // ----- GIAI DOAN 1: lai >= 10 gia -> keo SL ve entry (breakeven) -----
-   else if(profitDist >= InpTrailDistance)
+   // ----- GIAI DOAN 1: lai >= 10 gia, HOAC da mo qua InpBreakevenTimeMinutes phut va dang
+   // lai > g_lotMultiplier*5 -> keo SL ve entry (breakeven) -----
+   else if(profitDist >= InpTrailDistance || timeBreakevenDue)
    {
       newSL = NormalizeDouble(entry, digits);
 
@@ -478,7 +485,7 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
-      SendTelegram(TelegramMsg("Trail " + (isBuy ? "BUY" : "SELL"),
+      SendTelegram(TelegramMsg(_Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entry, 2), DoubleToString(newSL, 2),
          "-", DoubleToString(sl, 2), "-"));
       g_lastNotifiedSL = newSL;
@@ -605,7 +612,7 @@ void ManageAllOrders(int omitType)
       if(profitVal > threshold)
       {
          trade.PositionClose(ticket);
-         SendTelegram("Close%20Profit%3A%20" + DoubleToString(profitVal, 2));
+         SendTelegram("Close%20Profit%20" + symbol + "%3A%20" + DoubleToString(profitVal, 2));
          continue;
       }
 
@@ -939,7 +946,7 @@ void ExportDailyReport()
 
 
 
-   SendTelegram("Da xuat bao cao CSV ngay " + TimeToString(TimeCurrent(), TIME_DATE));
+   SendTelegram("Da xuat bao cao CSV " + _Symbol + " ngay " + TimeToString(TimeCurrent(), TIME_DATE));
    Print("Da xuat file: ", fileName);
 }
 

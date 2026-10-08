@@ -28,6 +28,7 @@
 input double InpTrailNotifyStep     = 3.0;  // Chi gui Telegram khi SL doi them >= gia tri nay
 input int    InpTrailNotifyCooldown = 30;   // Giay toi thieu giua 2 lan thong bao trailing (dung chung moi chien luoc)
 input int    InpTrailModifyCooldown = 2;    // Giay toi thieu giua 2 lan THUC SU gui lenh sua SL len san (dung chung moi chien luoc, tach biet - khong lien quan thoi gian gui Telegram)
+input int    InpBreakevenTimeMinutes = 21;  // Lenh mo qua N phut ma dang lai > volMultiplier*5 cua chien luoc thi keo SL ve entry ngay, khong can doi du trailDistance - dung chung moi chien luoc
 
 //=============================================================================
 // INPUTS (Efficiency Ratio - do "hieu qua" xu huong gia tren 1 khung tf rieng, dung chung
@@ -785,12 +786,12 @@ void OpenOrder(int s, int orderType, int shift)
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    string code       = g_strategies[s].code;
-   string label       = code + " " + (isBuy ? "Buy" : "Sell");
+   string label       = code + " " + _Symbol + " " + (isBuy ? "Buy" : "Sell");
 
    double dailyPnl = 0;
    if(DailyLimitReached(s, dailyPnl))
    {
-      Print(label, " signal skipped on ", _Symbol, ": daily P/L limit reached ($", DoubleToString(dailyPnl, 2),
+      Print(label, " signal skipped: daily P/L limit reached ($", DoubleToString(dailyPnl, 2),
             ", loss limit=-$", DoubleToString(g_strategies[s].dailyMaxLoss, 2), ", profit limit=$", DoubleToString(g_strategies[s].dailyMaxProfit, 2), ")");
       SendTelegram("Daily P/L limit reached - " + label + " signal skipped %0A P/L today: $" + DoubleToString(dailyPnl, 2));
       return;
@@ -799,7 +800,7 @@ void OpenOrder(int s, int orderType, int shift)
    double windowPnl = 0;
    if(TimeWindowLimitReached(s, windowPnl))
    {
-      Print(label, " signal skipped on ", _Symbol, ": time-window profit limit reached (window #", GetTimeWindowIndex(),
+      Print(label, " signal skipped: time-window profit limit reached (window #", GetTimeWindowIndex(),
             ", P/L $", DoubleToString(windowPnl, 2), " > $", DoubleToString(g_strategies[s].timeWindowMaxProfit, 2), ")");
       SendTelegram("Time-window profit limit reached - " + label + " signal skipped %0A P/L this window: $" + DoubleToString(windowPnl, 2));
       return;
@@ -823,7 +824,7 @@ void OpenOrder(int s, int orderType, int shift)
 
    if(atrRounded < 2)
    {
-      Print(label, " signal skipped on ", _Symbol, ": ATR too low (", DoubleToString(atrRounded, 1), " < 2)");
+      Print(label, " signal skipped: ATR too low (", DoubleToString(atrRounded, 1), " < 2)");
       SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atrRounded, 1));
       return;
    }
@@ -835,14 +836,14 @@ void OpenOrder(int s, int orderType, int shift)
       double erEntry = EfficiencyRatio(InpERtf, InpERPeriod, 1);
       if(erEntry < 0.1)
       {
-         Print(label, " signal skipped on ", _Symbol, ": ER too low (", DoubleToString(erEntry, 2), " < 0.1)");
+         Print(label, " signal skipped: ER too low (", DoubleToString(erEntry, 2), " < 0.1)");
          SendTelegram("Signal: " + label + " %0A ER: " + DoubleToString(erEntry, 2));
          return;
       }
 
       if(erEntry > 0.4)
       {
-         Print(label, " signal skipped on ", _Symbol, ": ER too high (", DoubleToString(erEntry, 2), " > 0.4)");
+         Print(label, " signal skipped: ER too high (", DoubleToString(erEntry, 2), " > 0.4)");
          SendTelegram("Signal: " + label + " %0A ER: " + DoubleToString(erEntry, 2));
          return;
       }
@@ -866,7 +867,7 @@ void OpenOrder(int s, int orderType, int shift)
 
    if(!sent)
    {
-      Print(label, " order failed on ", _Symbol, ", error code: ", GetLastError());
+      Print(label, " order failed, error code: ", GetLastError());
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
@@ -892,7 +893,7 @@ void OpenOrder(int s, int orderType, int shift)
    }
 
    g_strategies[s].previousPosition = isBuy ? "LONG" : "SHORT";
-   Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
+   Print(label, " order placed, ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
          ", erK: ", erKStr, ", er: ", erStr);
 }
@@ -927,7 +928,7 @@ void NotifyTrailing(int s, ulong ticket, bool isBuy, double entryPrice, double o
 
    if(bigMove && cooledOff)
    {
-      SendTelegram(TelegramMsg(g_strategies[s].code + " Trail " + (isBuy ? "BUY" : "SELL"),
+      SendTelegram(TelegramMsg(g_strategies[s].code + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
          "-", DoubleToString(oldSl, 2), "-"));
       g_lastNotifiedSL = newSL;
@@ -970,6 +971,11 @@ void TrailingStopTwoStage(int s, ulong ticket)
    bool   slAtOrAboveEntry = isBuy ? (sl >= entryPrice) : (sl <= entryPrice && sl != 0);
    double trailDistance    = g_strategies[s].trailDistance;
 
+   // Breakeven theo thoi gian: lenh mo qua InpBreakevenTimeMinutes phut VA dang lai
+   // > volMultiplier*5 cua chien luoc thi kich hoat breakeven ngay, khong can doi du trailDistance
+   bool timeBreakevenDue = (profitDist > g_strategies[s].volMultiplier * 5) &&
+      ((TimeCurrent() - (datetime)PositionGetInteger(POSITION_TIME)) >= InpBreakevenTimeMinutes * 60);
+
    double newSL = 0;
 
    if(slAtOrAboveEntry)
@@ -990,7 +996,7 @@ void TrailingStopTwoStage(int s, ulong ticket)
          return;
       }
    }
-   else if(profitDist >= trailDistance)
+   else if(profitDist >= trailDistance || timeBreakevenDue)
    {
       newSL = NormalizeDouble(entryPrice, digits);
 
@@ -1051,13 +1057,18 @@ void TrailingStopBreakevenOnly(int s, ulong ticket)
    bool   slAtOrAboveEntry = IsPositionAtBreakeven();
    double trailDistance    = g_strategies[s].trailDistance;
 
+   // Breakeven theo thoi gian: lenh mo qua InpBreakevenTimeMinutes phut VA dang lai
+   // > volMultiplier*5 cua chien luoc thi kich hoat breakeven ngay, khong can doi du trailDistance
+   bool timeBreakevenDue = (profitDist > g_strategies[s].volMultiplier * 5) &&
+      ((TimeCurrent() - (datetime)PositionGetInteger(POSITION_TIME)) >= InpBreakevenTimeMinutes * 60);
+
    if(slAtOrAboveEntry)
    {
       Print(g_strategies[s].code, " TrailingStop #", ticket, ": SL da o entry (breakeven), khong trail them");
       return;
    }
 
-   if(profitDist < trailDistance)
+   if(profitDist < trailDistance && !timeBreakevenDue)
    {
       return;
    }
@@ -1140,7 +1151,7 @@ void ExitPositionsOnReversal(int s, int shift, const CoralSnapshot &snap)
       }
 
       Print(g_strategies[s].code, " ExitPositionsOnReversal #", ticket, ": closed - ", tfName, " dao chieu");
-      SendTelegram(TelegramMsg(g_strategies[s].code + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
+      SendTelegram(TelegramMsg(g_strategies[s].code + " " + _Symbol + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
          DoubleToString(entryPrice, 2), DoubleToString(slNow, 2),
          (atBreakeven ? "gong lai" : "chua breakeven"), "-", "-"));
    }
@@ -1300,6 +1311,11 @@ void ManageOpenPositions(int s)
 //    lan moi InpTrailModifyCooldown giay (mac dinh 2s, g_lastModifyTime dung chung moi
 //    chien luoc) - throttle nay doc lap hoan toan voi InpTrailNotifyCooldown (chi chi phoi
 //    tan suat gui Telegram).
+//    Breakeven theo thoi gian (dung chung ca 6 chien luoc, InpBreakevenTimeMinutes, mac dinh
+//    21 phut): neu lenh da mo qua N phut VA dang lai > volMultiplier*5 cua chien luoc, kich hoat breakeven ngay ca khi
+//    chua du trailDistance - xem timeBreakevenDue trong TrailingStopTwoStage/
+//    TrailingStopBreakevenOnly. Neu dang lo (chua ve lai entry) thi khong sua SL, tu thu lai
+//    moi tick cho toi khi gia cham entry hoac lenh dong.
 //
 // 5. Volume: vol = min lot cua symbol * volMultiplier rieng tung chien luoc (input
 //    MFxx_VolMultiplier), khong tang theo chuoi lenh.

@@ -47,6 +47,14 @@ Tất cả biến thể đều dùng chung các khối sau (khác nhau ở tham 
 - **Giới hạn lãi theo khung giờ** (`TimeWindowLimitReached`): 1 ngày chia 3 khung giờ server
   (00h-6h / 6h-12h / 12h-24h), chặn mở lệnh mới trong khung nếu P/L khung đó > `TimeWindowMaxProfit`.
   Tự "reset" khi sang khung mới vì luôn tính lại theo khung hiện tại.
+- **Breakeven theo thời gian** (`timeBreakevenDue` trong `TrailingStop`/`TrailingStopTwoStage`/
+  `TrailingStopBreakevenOnly`, mới): nếu lệnh đã mở quá `InpBreakevenTimeMinutes` phút (mặc
+  định 21) **và** đang lãi theo giá hơn `g_lotMultiplier * 5` (file gộp: hơn
+  `volMultiplier * 5` của chiến lược đó), kéo SL về entry ngay, không cần đợi đủ
+  `InpTrailDistance`/`trailDistance` như điều kiện breakeven thông thường. Nếu lệnh chưa đạt
+  mức lãi đó (kể cả đang lỗ) thì không sửa SL — tự kiểm tra lại mỗi tick cho tới khi đủ điều
+  kiện hoặc lệnh đóng. Áp dụng đồng nhất cho cả 6 chiến lược (kể cả MF_03/MF_04 chỉ-breakeven)
+  và file gộp.
 - **Thông báo Telegram**: mọi sự kiện quan trọng (mở lệnh OK/FAIL, trail SL, tín hiệu bị bỏ
   qua do ATR thấp, đóng lệnh, chạm giới hạn P/L) đều gửi qua `SendTelegram`.
 - **Cảnh báo sideway** (`NotifySidewayMarket`, gọi mỗi nến M1 mới, độc lập hoàn toàn với
@@ -69,6 +77,7 @@ khi vào lệnh. MF_02 có thêm bộ lọc RSI, MF_06 có thêm bộ lọc Effi
 | **Cách đóng lệnh khi đảo chiều** | Đóng **hết** ngay (không xét lãi/lỗ) | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: chưa breakeven→theo M1, đã breakeven→theo M5 hoặc RSI(M5)×SMA45 | Đóng **hết** ngay (không xét lãi/lỗ) | Xét **từng lệnh**: lãi (theo khoảng cách giá) ≥ risk `\|entry-SL\|`→đóng ngay, chưa đạt→chỉ đóng nếu đã có chuỗi ≥N lệnh cùng hướng | Đóng **hết** ngay (không xét lãi/lỗ) |
 | **Trailing stop** | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) | Chỉ breakeven (không trail tiếp) | Chỉ breakeven (không trail tiếp) | 2 giai đoạn (breakeven→trail) | 2 giai đoạn (breakeven→trail) |
 | TrailDistance | 10 | 10 | 10 | 10 | 10 | 10 |
+| BreakevenTimeMinutes (mới) | 21 | 21 | 21 | 21 | 21 | 21 |
 | SlSpacingDistance | 8 | 8 | 8 | 8 | 8 | 8 |
 | TakeProfitDistance | 50 | 50 | 50 | 50 | 50 | 50 |
 | DailyMaxLoss / DailyMaxProfit | $40 / $100 | $40 / $100 | $40 / **$200** | $40 / $100 | $40 / $100 | $40 / $100 |
@@ -96,7 +105,10 @@ File: `tricoral-multi-timeframe-ea-MF01.mq5`
   gọi `CloseAllPositions()` đóng **toàn bộ** lệnh của bot ngay lập tức, không xét lệnh đó
   đang lãi hay lỗ.
 - **Trailing stop** (`TrailingStop`, 2 giai đoạn):
-  - Giai đoạn 1 (breakeven): khi lãi ≥ `InpTrailDistance` (10), kéo SL về đúng giá entry.
+  - Giai đoạn 1 (breakeven): khi lãi ≥ `InpTrailDistance` (10) **hoặc** khi lệnh đã mở quá
+    `InpBreakevenTimeMinutes` phút (mặc định 21) và đang lãi hơn `g_lotMultiplier * 5` (mới —
+    `timeBreakevenDue`), kéo SL về đúng giá entry. Nếu chưa đạt mức lãi đó thì chưa kéo, tự
+    kiểm tra lại mỗi tick.
   - Giai đoạn 2 (trail): khi SL đã ≥ entry, tiếp tục bám SL cách giá hiện tại
     `InpTrailDistance`, chỉ đổi theo hướng có lợi, luôn kiểm tra `StopsLevelOk` (stops level
     tối thiểu của broker) trước khi sửa SL.
@@ -134,8 +146,10 @@ File: `tricoral-multi-timeframe-ea-MF03-290826.mq5`
     chiều ở giai đoạn này). M5/RSI chậm hơn M1 nên lệnh không bị nhiễu ngắn hạn đá ra sớm;
     xấu nhất nếu giá quay đầu thật thì SL ở entry ăn trước → hoà vốn.
 - **Trailing** (`TrailingStop`, chỉ 1 giai đoạn breakeven): kéo SL về entry khi lãi đủ
-  `InpTrailDistance` rồi **dừng lại**, không bám tiếp SL theo giá như MF_01 — vì việc "gồng
-  lãi" sau breakeven đã chuyển hẳn sang nghe tín hiệu M5 ở `ExitPositionsOnReversal`.
+  `InpTrailDistance`, **hoặc** khi lệnh đã mở quá `InpBreakevenTimeMinutes` phút (mặc định 21)
+  và đang lãi hơn `g_lotMultiplier * 5` (mới), rồi **dừng lại**, không bám tiếp SL theo giá
+  như MF_01 — vì việc
+  "gồng lãi" sau breakeven đã chuyển hẳn sang nghe tín hiệu M5 ở `ExitPositionsOnReversal`.
 - **Ngưỡng giới hạn P/L nới lỏng hơn** các bản khác: `DailyMaxProfit=$200` (thay vì $100),
   `TimeWindowMaxProfit=$70` (thay vì $30) — hợp lý vì chiến lược này để lệnh chạy lâu hơn
   (gồng lãi), cần ngưỡng chốt lời rộng hơn để không cắt ngang xu hướng đang lãi.
@@ -147,8 +161,10 @@ File: `tricoral-multi-timeframe-ea-MF04-150926.mq5`
 - Giống **hệt MF_01** về tín hiệu vào lệnh và cách đóng lệnh khi đảo chiều
   (`CloseAllPositions()` không điều kiện, dựa trên `g_previousPosition`).
 - **Trailing chỉ 1 giai đoạn - breakeven** (`TrailingStop`, chạy mọi tick): khi lãi (theo giá)
-  >= `InpTrailDistance` thì kéo SL về đúng entry rồi **dừng lại**, không bám SL tiếp theo giá
-  như MF_01/MF_02. Trước khi đạt mốc breakeven, lệnh giữ nguyên SL/TP cố định đặt lúc
+  >= `InpTrailDistance`, **hoặc** khi lệnh đã mở quá `InpBreakevenTimeMinutes` phút (mặc định
+  21) và đang lãi hơn `g_lotMultiplier * 5` (mới), thì kéo SL về đúng entry rồi **dừng lại**,
+  không bám SL tiếp theo giá như MF_01/MF_02. Trước khi đạt mốc breakeven, lệnh giữ nguyên
+  SL/TP cố định đặt lúc
   `OpenOrder()`. Hành vi giống hệt `TrailingStopBreakevenOnly` của MF_03, chỉ khác cách đóng
   lệnh khi đảo chiều (MF_04 đóng hết ngay, MF_03 xét từng lệnh theo M1/M5).
 - Dùng để so sánh hiệu quả: MF_01 (trail 2 giai đoạn) vs MF_04 (chỉ về breakeven rồi dừng)
@@ -214,6 +230,8 @@ File: `tricoral-multi-timeframe-ea-MF06-220926.mq5`
   - `TRAIL_TWO_STAGE` — MF_01 / MF_02 / MF_05 / MF_06.
   - `TRAIL_BREAKEVEN_ONLY` — MF_03 / MF_04.
   - `TRAIL_NONE` — hiện không chiến lược nào dùng, để sẵn cho chiến lược tương lai không cần trailing.
+- Breakeven theo thời gian (`InpBreakevenTimeMinutes`, mặc định 21 phút): **1 input chung**
+  cho cả 6 chiến lược (không tách riêng `InpMFxx_*`) — xem mục 2.
 - Bộ lọc thêm trước khi vào lệnh: `useRsiFilter` (`true` cho MF_02) và `useErEntryFilter`
   (`true` cho MF_06, ngưỡng cố định `er` ∈ (0.1, 0.4]) trong `StrategyConfig`.
 - Mỗi chiến lược có magic + comment lệnh riêng (`IsBotPosition(s)` check cả 2 lớp), giới hạn

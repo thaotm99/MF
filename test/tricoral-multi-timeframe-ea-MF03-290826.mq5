@@ -22,6 +22,7 @@ input long InpMagicNumber = 20250806;  // Magic number cua bot (lenh thu cong ma
 // INPUTS (trailing stop)
 //=============================================================================
  double InpTrailDistance       = 10;  // Mức lãi tối thiểu để kéo SL về entry (breakeven)
+input int    InpBreakevenTimeMinutes = 21;  // Lệnh mở quá N phút mà đang lãi > g_lotMultiplier*5 thì kéo SL về entry ngay, không cần đợi đủ InpTrailDistance
 input double InpTrailNotifyStep     = 3.0;  // Chỉ gửi Telegram khi SL đổi thêm >= giá trị này
 input int    InpTrailNotifyCooldown = 30;   // Giây tối thiểu giữa 2 lần thông báo trailing
 input int    InpTrailModifyCooldown = 2;    // Giây tối thiểu giữa 2 lần THỰC SỰ gửi lệnh sửa SL lên sàn (tách biệt, không liên quan thời gian gửi Telegram)
@@ -370,12 +371,12 @@ void OpenOrder(int orderType, int shift)
 {
    bool   isBuy      = (orderType == (int)POSITION_TYPE_BUY);
    double entryPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string label      = BOT_COMMENT_PREFIX + " " + (isBuy ? "Buy" : "Sell");
+   string label      = BOT_COMMENT_PREFIX + " " + _Symbol + " " + (isBuy ? "Buy" : "Sell");
 
    double dailyPnl = 0;
    if(DailyLimitReached(dailyPnl))
    {
-      Print(label, " signal skipped on ", _Symbol, ": daily P/L limit reached ($", DoubleToString(dailyPnl, 2),
+      Print(label, " signal skipped: daily P/L limit reached ($", DoubleToString(dailyPnl, 2),
             ", loss limit=-$", DoubleToString(InpDailyMaxLoss, 2), ", profit limit=$", DoubleToString(InpDailyMaxProfit, 2), ")");
       SendTelegram("Daily P/L limit reached - " + label + " signal skipped %0A P/L today: $" + DoubleToString(dailyPnl, 2));
       return;
@@ -384,7 +385,7 @@ void OpenOrder(int orderType, int shift)
    double windowPnl = 0;
    if(TimeWindowLimitReached(windowPnl))
    {
-      Print(label, " signal skipped on ", _Symbol, ": time-window profit limit reached (window #", GetTimeWindowIndex(),
+      Print(label, " signal skipped: time-window profit limit reached (window #", GetTimeWindowIndex(),
             ", P/L $", DoubleToString(windowPnl, 2), " > $", DoubleToString(InpTimeWindowMaxProfit, 2), ")");
       SendTelegram("Time-window profit limit reached - " + label + " signal skipped %0A P/L this window: $" + DoubleToString(windowPnl, 2));
       return;
@@ -409,7 +410,7 @@ void OpenOrder(int orderType, int shift)
 
    if(atrRounded < 2)
    {
-      Print(label, " signal skipped on ", _Symbol, ": ATR too low (", DoubleToString(atrRounded, 1), " < 2)");
+      Print(label, " signal skipped: ATR too low (", DoubleToString(atrRounded, 1), " < 2)");
       SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atrRounded, 1));
       return;
    }
@@ -431,7 +432,7 @@ void OpenOrder(int orderType, int shift)
 
    if(!sent)
    {
-      Print(label, " order failed on ", _Symbol, ", error code: ", GetLastError());
+      Print(label, " order failed, error code: ", GetLastError());
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
@@ -448,7 +449,7 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(atr, 2)) + "%0AerK:    " + erKStr + "%0Aer:     " + erStr);
    }
 
-   Print(label, " order placed on ", _Symbol, ", ticket: ", trade.ResultOrder(),
+   Print(label, " order placed, ticket: ", trade.ResultOrder(),
          ", entry: ", DoubleToString(entryPrice, 2), ", SL: ", DoubleToString(sl, 2), ", TP: ", DoubleToString(tp, 2),
          ", erK: ", erKStr, ", er: ", erStr);
 }
@@ -496,6 +497,11 @@ void TrailingStop(ulong ticket)
    double profitDist = isBuy ? (price - entryPrice) : (entryPrice - price);  // lãi hiện tại (theo giá)
    bool   slAtOrAboveEntry = IsPositionAtBreakeven();
 
+   // Breakeven theo thoi gian: lenh mo qua InpBreakevenTimeMinutes phut VA dang lai
+   // > g_lotMultiplier*5 thi kich hoat breakeven ngay, khong can doi du InpTrailDistance
+   bool timeBreakevenDue = (profitDist > g_lotMultiplier * 5) &&
+      ((TimeCurrent() - (datetime)PositionGetInteger(POSITION_TIME)) >= InpBreakevenTimeMinutes * 60);
+
    // ----- SL da o entry (hoac tot hon) -> khong lam gi them -----
    if(slAtOrAboveEntry)
    {
@@ -503,8 +509,8 @@ void TrailingStop(ulong ticket)
       return;
    }
 
-   // ----- Chua du lai -> bo qua -----
-   if(profitDist < InpTrailDistance)
+   // ----- Chua du lai VA chua qua InpBreakevenTimeMinutes phut (hoac chua lai) -> bo qua -----
+   if(profitDist < InpTrailDistance && !timeBreakevenDue)
    {
       return;
    }
@@ -547,7 +553,7 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
-      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " Trail " + (isBuy ? "BUY" : "SELL"),
+      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
          "-", DoubleToString(sl, 2), "-"));
       g_lastNotifiedSL = newSL;
@@ -645,7 +651,7 @@ void ExitPositionsOnReversal(int shift)
       }
 
       Print("ExitPositionsOnReversal #", ticket, ": closed - ", tfName, " dao chieu");
-      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
+      SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " " + _Symbol + " Exit " + (isBuy ? "BUY" : "SELL") + " - " + tfName + " dao chieu",
          DoubleToString(entryPrice, 2), DoubleToString(slNow, 2),
          (atBreakeven ? "gong lai" : "chua breakeven"), "-", "-"));
    }
@@ -768,7 +774,7 @@ void NotifySidewayMarket()
    double atr = 0;
    if(CopyBuffer(g_hATR_M1, 0, 1, 1, atrBuf) > 0) atr = atrBuf[0];
 
-   SendTelegram("Sideway warning - " + BOT_COMMENT_PREFIX + " %0A ATR: " + DoubleToString(atr, 1) +
+   SendTelegram("Sideway warning - " + BOT_COMMENT_PREFIX + " " + _Symbol + " %0A ATR: " + DoubleToString(atr, 1) +
                 " %0A erK: " + DoubleToString(erK, 2) + " %0A er: " + DoubleToString(er, 2));
 
    g_lastSidewayNotifyTime = TimeCurrent();
@@ -807,7 +813,9 @@ void NotifySidewayMarket()
 // 4. Trailing stop chỉ 1 giai đoạn - breakeven (TrailingStop, chạy MỌI tick):
 //      - Khi lãi >= InpTrailDistance, kéo SL về đúng giá entry (chỉ đổi theo hướng có lợi
 //        và luôn kiểm tra stops level tối thiểu của broker - StopsLevelOk - trước khi
-//        gửi lệnh sửa SL).
+//        gửi lệnh sửa SL). Cũng kích hoạt sớm breakeven này (không cần đợi đủ
+//        InpTrailDistance) nếu lệnh đã mở quá InpBreakevenTimeMinutes phút (mặc định 21) và
+//        đang lãi > g_lotMultiplier*5 - xem timeBreakevenDue trong TrailingStop.
 //      - Khi SL đã ở mức entry trở lên thì dừng, KHÔNG bám SL theo InpTrailDistance nữa.
 //      - Throttle gửi lệnh: chỉ THỰC SỰ gửi PositionModify() tối đa 1 lần mỗi
 //        InpTrailModifyCooldown giây (mặc định 2s, g_lastModifyTime), độc lập hoàn toàn với
