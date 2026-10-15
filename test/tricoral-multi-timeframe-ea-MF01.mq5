@@ -72,7 +72,7 @@ datetime g_lastSidewayNotifyTime = 0;   // lan gan nhat gui canh bao sideway (th
 
 CTrade   trade;
 
-int g_hATR_M1, g_hADX_M1;
+int g_hATR_M1, g_hATR_M5, g_hATR_M15, g_hADX_M1;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 //=============================================================================
@@ -88,15 +88,17 @@ int OnInit()
    trade.SetExpertMagicNumber(InpMagicNumber);   // gan magic number cho moi lenh bot mo
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
+   g_hATR_M5   = iATR(_Symbol, PERIOD_M5, 14);
+   g_hATR_M15  = iATR(_Symbol, PERIOD_M15, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
-   
+
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
    g_hCoralM5  = iCustom(_Symbol, PERIOD_M5,  InpCoralIndicatorName, true, 14);
    g_hCoralM15 = iCustom(_Symbol, PERIOD_M15, InpCoralIndicatorName, true, 14);
    g_hCoralM30 = iCustom(_Symbol, PERIOD_M30, InpCoralIndicatorName, true, 14);
    g_hCoralH1  = iCustom(_Symbol, PERIOD_H1,  InpCoralIndicatorName, true, 14);
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hATR_M5==INVALID_HANDLE || g_hATR_M15==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
@@ -113,6 +115,8 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
+   IndicatorRelease(g_hATR_M5);
+   IndicatorRelease(g_hATR_M15);
    IndicatorRelease(g_hADX_M1);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
@@ -187,6 +191,17 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
    double adx = 0;
    if(CopyBuffer(g_hADX_M1, 0, 1, 1, adxBuf) > 0) adx = adxBuf[0];
 
+   double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
+   double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
+
+   double atr15Buf[]; ArraySetAsSeries(atr15Buf, true);
+   double atr15 = 0;
+   if(CopyBuffer(g_hATR_M15, 0, 1, 1, atr15Buf) > 0) atr15 = atr15Buf[0];
+
+   double atr5Buf[]; ArraySetAsSeries(atr5Buf, true);
+   double atr5 = 0;
+   if(CopyBuffer(g_hATR_M5, 0, 1, 1, atr5Buf) > 0) atr5 = atr5Buf[0];
+
    return title + "%0A------------------%0A"
         + "Entry:  $" + entryPrice + "%0A"
         + "SL:     $" + sl         + "%0A"
@@ -194,7 +209,11 @@ string TelegramMsg(string title, string entryPrice, string sl, string distanceTe
         + "Swing:  $" + swingPrice  + "%0A"
         + "spread:    " + DoubleToString(spread, 1) + "%0A"
         + "adx:  $" + DoubleToString(adx, 2)  + "%0A"
-        + "ATR:     " + atr;
+        + "ATR:     " + atr + "%0A"
+        + "ATR15:   " + DoubleToString(atr15, 1) + "%0A"
+        + "ATR5:    " + DoubleToString(atr5, 1) + "%0A"
+        + "er15:    " + DoubleToString(er15, 2) + "%0A"
+        + "er5:     " + DoubleToString(er5, 2);
 }
 
 //=============================================================================
@@ -429,7 +448,7 @@ void OpenOrder(int orderType, int shift)
       SendTelegram(TelegramMsg(label + " FAILED",
          DoubleToString(entryPrice, 2), DoubleToString(sl, 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
+         DoubleToString(atr, 2)));
       return;
    }
 
@@ -439,7 +458,7 @@ void OpenOrder(int orderType, int shift)
          DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 2),
          DoubleToString(PositionGetDouble(POSITION_SL), 2),
          DoubleToString(slDistance, 2), DoubleToString(swingPrice, 2),
-         DoubleToString(atr, 2)) + "%0Aer15:   " + er15Str + "%0Aer5:    " + er5Str);
+         DoubleToString(atr, 2)));
    }
 
    g_previousPosition = isBuy ? "LONG" : "SHORT";
@@ -553,11 +572,9 @@ void TrailingStop(ulong ticket)
 
    if(bigMove && cooledOff)
    {
-      double er15 = EfficiencyRatio(PERIOD_M15, InpERPeriod, 1);
-      double er5  = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1);
       SendTelegram(TelegramMsg(BOT_COMMENT_PREFIX + " " + _Symbol + " Trail " + (isBuy ? "BUY" : "SELL"),
          DoubleToString(entryPrice, 2), DoubleToString(newSL, 2),
-         "-", DoubleToString(sl, 2), "-") + "%0Aer15:   " + DoubleToString(er15, 2) + "%0Aer5:    " + DoubleToString(er5, 2));
+         "-", DoubleToString(sl, 2), "-"));
       g_lastNotifiedSL = newSL;
       g_lastNotifyTime = TimeCurrent();
       Print("TrailingStop #", ticket, ": Telegram notification sent");
@@ -762,10 +779,13 @@ void NotifySidewayMarket()
 //
 // 10. Efficiency Ratio: đo "độ hiệu quả" của xu hướng giá (độc lập Coral M1/M5/M15), dùng ở
 //     2 nơi với 2 cách tính khác nhau:
-//     - Trong OpenOrder VÀ trail SL (TrailingStop): tính er15 = EfficiencyRatio(PERIOD_M15,
+//     - Trong order comment (orderComment, OpenOrder): tính er15 = EfficiencyRatio(PERIOD_M15,
 //       InpERPeriod, 1) và er5 = EfficiencyRatio(PERIOD_M5, InpERPeriod, 1) - 2 khung CỐ ĐỊNH,
-//       không qua InpERtf. Ghi vào comment lệnh (",er15: x.xx,er5: x.xx") và gửi Telegram khi
-//       mở lệnh OK/FAILED cũng như mỗi lần trail SL. CHƯA dùng để lọc tín hiệu vào lệnh.
+//       không qua InpERtf - ghi vào comment lệnh (",er15: x.xx,er5: x.xx").
+//     - Trong TelegramMsg (dùng chung cho MỌI thông báo liên quan lệnh - OK/FAILED/trail SL):
+//       tự tính lại er15/er5 (cùng công thức), và thêm ATR15/ATR5 (ATR 14 nến trên M15/M5,
+//       dùng handle riêng g_hATR_M15/g_hATR_M5), luôn thêm vào cuối message, không cần nơi
+//       gọi truyền vào hay tính riêng. CHƯA dùng để lọc tín hiệu vào lệnh.
 //     - Cảnh báo sideway (NotifySidewayMarket, gọi đầu ProcessSignal mỗi nến M1 mới): nếu
 //       0 < er < 0.05 (thị trường quá kém hiệu quả/giằng co) thì gửi Telegram (ATR + er15 +
 //       er5), tối đa 1 lần mỗi InpSidewayNotifyCooldown giây (mặc định 1800s = 30 phút,

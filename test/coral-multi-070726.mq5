@@ -60,7 +60,7 @@ CTrade   trade;
 
 
 
-int g_hATR_M1, g_hADX_M1;
+int g_hATR_M1, g_hATR_M5, g_hATR_M15, g_hADX_M1;
 int g_hCoralM1, g_hCoralM5, g_hCoralM15, g_hCoralM30, g_hCoralH1;
 
 // Handle chi bao (MT5 yeu cau tao handle)
@@ -94,6 +94,8 @@ int OnInit()
 
 
    g_hATR_M1   = iATR(_Symbol, PERIOD_M1, 14);
+   g_hATR_M5   = iATR(_Symbol, PERIOD_M5, 14);
+   g_hATR_M15  = iATR(_Symbol, PERIOD_M15, 14);
    g_hADX_M1   = iADX(_Symbol, PERIOD_M1, 14);
    
    g_hCoralM1  = iCustom(_Symbol, PERIOD_M1,  InpCoralIndicatorName, true, 14);
@@ -108,7 +110,7 @@ int OnInit()
 
 
 
-   if(g_hATR_M1==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
+   if(g_hATR_M1==INVALID_HANDLE || g_hATR_M5==INVALID_HANDLE || g_hATR_M15==INVALID_HANDLE || g_hADX_M1==INVALID_HANDLE ||
       g_hCoralM1==INVALID_HANDLE || g_hCoralM5==INVALID_HANDLE || g_hCoralM15==INVALID_HANDLE ||
       g_hCoralM30==INVALID_HANDLE || g_hCoralH1==INVALID_HANDLE)
    {
@@ -137,6 +139,8 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    IndicatorRelease(g_hATR_M1);
+   IndicatorRelease(g_hATR_M5);
+   IndicatorRelease(g_hATR_M15);
    IndicatorRelease(g_hADX_M1);
    IndicatorRelease(g_hCoralM1);
    IndicatorRelease(g_hCoralM5);
@@ -210,7 +214,13 @@ string TelegramMsg(string title, string entry, string sl, string dist, string sw
    string er15Str = DoubleToString(er15, 2);
    string er5Str  = DoubleToString(er5, 2);
 
+   double atr15Buf[]; ArraySetAsSeries(atr15Buf, true);
+   double atr15 = 0;
+   if(CopyBuffer(g_hATR_M15, 0, 1, 1, atr15Buf) > 0) atr15 = atr15Buf[0];
 
+   double atr5Buf[]; ArraySetAsSeries(atr5Buf, true);
+   double atr5 = 0;
+   if(CopyBuffer(g_hATR_M5, 0, 1, 1, atr5Buf) > 0) atr5 = atr5Buf[0];
 
    return title + "%0A------------------%0A"
         + "Entry:  $" + entry      + "%0A"
@@ -220,6 +230,8 @@ string TelegramMsg(string title, string entry, string sl, string dist, string sw
         + "spread:    " + DoubleToString(spread, 1) + "%0A"
         + "adx:  $" + DoubleToString(adx, 2)  + "%0A"
         + "ATR:     " + atr + "%0A"
+        + "%0A ATR15: " + DoubleToString(atr15, 1)
+        + "%0A ATR5: " + DoubleToString(atr5, 1)
         + "%0A upNowRSI: " + IntegerToString(upNowRSI)
         + "%0A downNowRSI: " + IntegerToString(downNowRSI)
           + "%0A er15: " + er15Str
@@ -345,11 +357,18 @@ void OpenOrder(int orderType, int shift)
    string er15Str = DoubleToString(er15, 2);
    string er5Str  = DoubleToString(er5, 2);
 
+   double atr15Buf[]; ArraySetAsSeries(atr15Buf, true);
+   double atr15 = 0;
+   if(CopyBuffer(g_hATR_M15, 0, 1, 1, atr15Buf) > 0) atr15 = atr15Buf[0];
+
+   double atr5Buf[]; ArraySetAsSeries(atr5Buf, true);
+   double atr5 = 0;
+   if(CopyBuffer(g_hATR_M5, 0, 1, 1, atr5Buf) > 0) atr5 = atr5Buf[0];
 
    if(atr < 2)
    {
       Print("atr < 3: ");
-      SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atr, 2) + " %0A upNowRSI: " + IntegerToString(upNowRSI) + " %0A downNowRSI: " + IntegerToString(downNowRSI) ) + " %0A er15: " + er15Str + " %0A er5: " + er5Str;
+      SendTelegram("Signal: " + label + " %0A ATR: " + DoubleToString(atr, 2) + " %0A ATR15: " + DoubleToString(atr15, 1) + " %0A ATR5: " + DoubleToString(atr5, 1) + " %0A upNowRSI: " + IntegerToString(upNowRSI) + " %0A downNowRSI: " + IntegerToString(downNowRSI) ) + " %0A er15: " + er15Str + " %0A er5: " + er5Str;
       return;
    }
 
@@ -748,8 +767,15 @@ string createComment(string label)
    string er15Str = DoubleToString(er15, 2);
    string er5Str  = DoubleToString(er5, 2);
 
+   double atr15Buf[]; ArraySetAsSeries(atr15Buf, true);
+   double atr15 = 0;
+   if(CopyBuffer(g_hATR_M15, 0, 1, 1, atr15Buf) > 0) atr15 = atr15Buf[0];
 
-   return "ATR : " + DoubleToString(atr, 1)+ ", er15: " + er15Str + ", er5: " + er5Str;
+   double atr5Buf[]; ArraySetAsSeries(atr5Buf, true);
+   double atr5 = 0;
+   if(CopyBuffer(g_hATR_M5, 0, 1, 1, atr5Buf) > 0) atr5 = atr5Buf[0];
+
+   return "ATR : " + DoubleToString(atr, 1) + ", ATR15: " + DoubleToString(atr15, 1) + ", ATR5: " + DoubleToString(atr5, 1) + ", er15: " + er15Str + ", er5: " + er5Str;
 }
 
 
