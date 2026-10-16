@@ -5,6 +5,9 @@ import { int, money } from '../utils/format'
 const reports = useReportsStore()
 
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'UTC' }) : '—')
+/** Thời điểm xuất báo cáo mới nhất ("Date:" trong báo cáo, giờ server) → "16/10/2026 15:01" */
+const fmtReportTime = (iso?: string) =>
+  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)} ${iso.slice(11, 16)}` : '—'
 const tradeCount = (id: string) =>
   reports.byId(id)?.deals.filter((d) => d.deal.type === 'close').length ?? 0
 </script>
@@ -34,6 +37,7 @@ const tradeCount = (id: string) =>
           <tr>
             <th>Tài khoản</th>
             <th>Server</th>
+            <th>Số liệu đến (giờ server)</th>
             <th>Lịch sử</th>
             <th class="r">Lệnh đã đóng</th>
             <th class="r">Equity</th>
@@ -44,6 +48,7 @@ const tradeCount = (id: string) =>
           <tr v-for="a in reports.accounts" :key="a.id">
             <td><b>{{ a.label }}</b><div class="muted small">#{{ a.login }}</div></td>
             <td>{{ a.server ?? '—' }}</td>
+            <td>{{ fmtReportTime(a.latest.reportTime) }}</td>
             <td>{{ fmtDate(a.firstDealTime) }} – {{ fmtDate(a.lastDealTime) }}</td>
             <td class="r">{{ int(tradeCount(a.id)) }}</td>
             <td class="r">{{ a.latest.equity !== undefined ? `${money(a.latest.equity)} ${a.currency}` : '—' }}</td>

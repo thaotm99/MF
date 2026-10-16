@@ -84,10 +84,6 @@ const currencies = computed(() => new Set([display.value, ...unconvertible.value
 const currency = computed(() => (unconvertible.value.length && accounts.value.length === 1 ? unconvertible.value[0] : display.value))
 const loading = computed(() => reports.state === 'loading')
 const fileErrors = computed(() => reports.files.filter((f) => f.error))
-/** Thời điểm xuất báo cáo cũ nhất trong các tài khoản đang xem — số liệu chỉ mới đến lúc đó */
-const reportTime = computed(() =>
-  accounts.value.map((a) => a.latest.reportTime).filter(Boolean).sort()[0],
-)
 
 watch(
   () => reports.accounts.map((a) => a.id),
@@ -110,7 +106,6 @@ function onCalendarChange(y: number, m: number) {
   calMonth.value = m
 }
 
-const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 </script>
 
 <template>
@@ -144,7 +139,6 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
             <DateRangePicker v-model="range" :today="today" />
           </div>
           <span v-if="loading" class="loading">Đang đọc báo cáo…</span>
-          <span v-else-if="reportTime" class="loading">Số liệu đến {{ fmtTime(reportTime) }} (giờ server)</span>
         </div>
 
         <p v-for="f in fileErrors" :key="f.name" class="alert error"><b>{{ f.name }}:</b> {{ f.error }}</p>
