@@ -113,7 +113,7 @@ const winRate = (b: BarItem) => (b.count ? Math.round((b.wins / b.count) * 100) 
         <tbody>
           <tr v-for="b in items" :key="b.key">
             <td>{{ b.label }}</td>
-            <td class="r num">{{ fmt(b.value) }}</td>
+            <td class="r num" :class="b.value >= 0 ? 'pos' : 'neg'">{{ fmt(b.value) }}</td>
             <td class="r num">{{ b.count }}</td>
             <td class="r num">{{ winRate(b) }}%</td>
           </tr>
@@ -156,7 +156,7 @@ const winRate = (b: BarItem) => (b.count ? Math.round((b.wins / b.count) * 100) 
 
       <div v-if="hovered" class="tip" :style="{ left: `${tipLeft}px` }">
         <div class="tip-title">{{ hovered.label }}</div>
-        <div class="tip-row"><span class="dot" :class="hovered.value >= 0 ? 'pos' : 'neg'" />Lãi/Lỗ <b>{{ fmt(hovered.value) }}</b></div>
+        <div class="tip-row"><span class="dot" :class="hovered.value >= 0 ? 'pos' : 'neg'" />Lãi/Lỗ <b :class="hovered.value >= 0 ? 'val-pos' : 'val-neg'">{{ fmt(hovered.value) }}</b></div>
         <div class="tip-row">Số lệnh <b>{{ hovered.count }}</b> · Thắng <b>{{ winRate(hovered) }}%</b></div>
       </div>
     </div>
@@ -186,6 +186,8 @@ path { transition: opacity .12s; }
 .tip-title { font-weight: 600; margin-bottom: 4px; }
 .tip-row { color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .tip-row b { color: var(--text); font-weight: 600; }
+.tip-row b.val-pos { color: var(--pos); }
+.tip-row b.val-neg { color: var(--neg); }
 .dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 .empty { color: var(--muted); text-align: center; padding: 60px 0; margin: 0; font-size: 13px; }
 .table-wrap { overflow-x: auto; max-height: 230px; overflow-y: auto; }

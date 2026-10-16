@@ -147,7 +147,7 @@ function focusTrade(p: Mt5Position) {
 }
 
 // ----- Tooltip khi rê chuột -----
-const tip = ref<{ x: number; y: number; rows: { key: string; text: string; color: string; value?: string }[] } | null>(null)
+const tip = ref<{ x: number; y: number; rows: { key: string; text: string; color: string; value: string; win: boolean }[] } | null>(null)
 function onCrosshair(param: MouseEventParams) {
   if (!param.time || !param.point) return (tip.value = null)
   const events = positionsAtBar(trades.value, param.time as number, tfSec.value)
@@ -161,7 +161,8 @@ function onCrosshair(param: MouseEventParams) {
       text: kind === 'in'
         ? `Vào ${p.type === 'buy' ? 'Buy' : 'Sell'} ${p.volume} lot @ ${p.openPrice}`
         : `Ra @ ${p.closePrice}`,
-      value: kind === 'out' ? `${money(p.netProfit, { sign: true })} ${props.currency}` : undefined,
+      value: `${money(p.netProfit, { sign: true })} ${props.currency}`,
+      win: p.netProfit >= 0,
     })),
   }
 }
@@ -208,7 +209,7 @@ watch(() => [props.from, props.to], fitToRange)
         <div v-for="r in tip.rows" :key="r.key" class="tip-row">
           <span class="line-key" :style="{ background: r.color }" />
           <span>{{ r.text }}</span>
-          <b v-if="r.value">{{ r.value }}</b>
+          <b :class="r.win ? 'val-pos' : 'val-neg'">{{ r.value }}</b>
         </div>
       </div>
     </div>
@@ -243,6 +244,8 @@ watch(() => [props.from, props.to], fitToRange)
 }
 .tip-row { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 .tip-row b { color: var(--text); margin-left: auto; padding-left: 8px; }
+.tip-row b.val-pos { color: var(--pos); }
+.tip-row b.val-neg { color: var(--neg); }
 .line-key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
 .foot { color: var(--faint); font-size: 11px; margin: 6px 0 14px; text-align: center; }
 @media (max-width: 640px) { .chart { height: 320px; } .legend { margin-left: 0; } }

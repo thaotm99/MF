@@ -143,14 +143,6 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
             <span>Thời gian</span>
             <DateRangePicker v-model="range" :today="today" />
           </div>
-          <div class="field">
-            <span>Tiền tệ</span>
-            <div class="seg" role="radiogroup" aria-label="Tiền tệ hiển thị">
-              <button v-for="c in (['USD', 'USC'] as const)" :key="c" type="button" role="radio"
-                :aria-checked="settings.displayCurrency === c" :class="{ on: settings.displayCurrency === c }"
-                @click="settings.displayCurrency = c">{{ c }}</button>
-            </div>
-          </div>
           <span v-if="loading" class="loading">Đang đọc báo cáo…</span>
           <span v-else-if="reportTime" class="loading">Số liệu đến {{ fmtTime(reportTime) }} (giờ server)</span>
         </div>
@@ -225,10 +217,6 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; }
 .filters .field { display: grid; gap: 6px; font-size: 12px; color: var(--text); }
 .filters .field:first-child { width: min(370px, 100%); }
 .account { width: 100%; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; min-height: 40px; }
-.seg button { border: 0; background: var(--surface); padding: 0 16px; color: var(--muted); font-weight: 500; }
-.seg button + button { border-left: 1px solid var(--border); }
-.seg button.on { background: var(--accent); color: #fff; }
 .loading { color: var(--muted); font-size: 13px; padding-bottom: 10px; }
 .section-title { font-size: 15px; font-weight: 600; margin: 28px 0 10px; }
 .journal { padding: 0; }

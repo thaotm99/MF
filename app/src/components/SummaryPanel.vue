@@ -17,6 +17,9 @@ const props = defineProps<{
 }>()
 
 /** Tỷ lệ chiến thắng = lệnh có lãi (profit ≥ 0, như MT5) / lệnh đã đóng */
+/** Màu chữ theo dấu: dương xanh, âm đỏ, 0 giữ màu thường */
+const signClass = (v: number) => (v > 0 ? 'pos' : v < 0 ? 'neg' : '')
+
 const winRate = computed(() =>
   props.summary.closedOrders ? (props.summary.profitable / props.summary.closedOrders) * 100 : 0,
 )
@@ -26,7 +29,7 @@ const winRate = computed(() =>
   <div class="grid" :class="{ dim: loading }">
     <div class="col">
       <div class="label">Lợi nhuận ròng <i class="hint" title="Lãi + lỗ của các lệnh đã đóng, trừ phí giao dịch">i</i></div>
-      <div class="big">
+      <div class="big" :class="signClass(summary.netProfit)">
         {{ splitMoney(summary.netProfit).int }}<small>{{ splitMoney(summary.netProfit).frac }}</small> {{ currency }}
       </div>
       <ul>
@@ -35,8 +38,8 @@ const winRate = computed(() =>
           <b :class="todayPnl > 0 ? 'pos' : todayPnl < 0 ? 'neg' : ''">{{ money(todayPnl, { sign: true }) }} {{ currency }}</b>
           <i class="hint" :title="`Lãi/lỗ ròng của ${todayTrades} lệnh đóng hôm nay, không phụ thuộc kỳ đã chọn`">i</i>
         </li>
-        <li>Lãi <b>{{ money(summary.profit, { sign: true }) }} {{ currency }}</b></li>
-        <li>Lỗ <b>{{ money(summary.loss) }} {{ currency }}</b></li>
+        <li>Lãi <b :class="signClass(summary.profit)">{{ money(summary.profit, { sign: true }) }} {{ currency }}</b></li>
+        <li>Lỗ <b :class="signClass(summary.loss)">{{ money(summary.loss) }} {{ currency }}</b></li>
       </ul>
     </div>
 
@@ -85,6 +88,8 @@ const winRate = computed(() =>
 .label { color: var(--muted); font-size: 13px; }
 .big { font-size: 20px; font-weight: 600; margin: 4px 0 40px; white-space: nowrap; }
 .big small { font-size: 15px; font-weight: 600; }
+.big.pos { color: var(--pos); }
+.big.neg { color: var(--neg); }
 ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
 b { color: var(--text); font-weight: 500; }
 b.pos { color: var(--pos); }

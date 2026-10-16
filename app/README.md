@@ -80,7 +80,7 @@ Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên fil
 | Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã / ATR / ER5 |
 | ATR, ER5 lúc vào lệnh  | Đọc từ comment lệnh của EA: `A:` (cũ `ATR :`), `er5:` (cũ `er:`, ER trên M5). ATR chia bước 0.5 (gộp ≥ 5), ER5 bước 0.1. Lệnh không có giá trị hoặc comment bị MT5 cắt (31 ký tự) thì bỏ qua |
 
-- **Tiền tệ hiển thị:** nút **USD | USC** trên trang Tổng quan, mặc định USD, được nhớ trong trình duyệt.
+- **Tiền tệ hiển thị:** nút **USD | USC** ở trang **Báo cáo MT5 → Cài đặt**, mặc định USD, được nhớ trong trình duyệt.
   1 USD = 100 USC; áp dụng cho mọi số tiền, nên gộp tài khoản USD với tài khoản cent vẫn cộng đúng.
   Tài khoản dùng loại tiền khác giữ nguyên và có cảnh báo.
 - Deal `balance`, `credit`, `correction` (nạp/rút) không tính vào lãi/lỗ.

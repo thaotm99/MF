@@ -45,7 +45,7 @@ const fmtShort = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)
       <template v-if="streak.count">
         <div class="value">{{ streak.count }} lệnh</div>
         <div class="sub">
-          {{ money(streak.sum) }} {{ currency }} ·
+          <span class="neg">{{ money(streak.sum) }} {{ currency }}</span> ·
           {{ fmtShort(streak.from) }}{{ fmtShort(streak.from) !== fmtShort(streak.to) ? ` – ${fmtShort(streak.to)}` : '' }}
         </div>
       </template>
