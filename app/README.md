@@ -94,6 +94,17 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
 | Nến trước khi vào | Engulfing, pin bar, doji, inside bar, nến tăng/giảm; xác nhận hay ngược chiều lệnh |
 | EMA20 | Giá trên/dưới EMA20, EMA dốc lên/xuống (so với 5 nến trước) |
 | Biến động | ATR14 hiện tại so với trung bình 50 nến: tăng (> 1.25×) / thấp (< 0.8×) / bình thường |
+| Khung H1 / H4 | Gộp nến khung đánh giá thành H1/H4 (mốc UTC), cấu trúc swing như trên; thuận / ngược / sideway so với chiều lệnh |
+| So với ngày hôm trước | Giá vào trên PDH / sát PDH (< 0.5 ATR) / trong range / sát PDL / dưới PDL (ngày D1 đã đóng gần nhất, gộp từ nến) |
+| Số tròn | Khoảng cách tới số tròn gần nhất theo ATR (bước: giá ≥ 1000 → 10; ≥ 100 → 1; ≥ 10 → 0.1; còn lại 0.001) |
+| Phiên | Theo giờ server UTC+0: Á 0–7h, Âu 7–12h, Âu–Mỹ 12–16h, Mỹ 16–21h, cuối ngày 21–24h |
+
+**Tổ hợp setup** — ghép 2–3 yếu tố lúc vào lệnh, tìm tổ hợp lãi nhất / lỗ nhất:
+
+- Chia lệnh theo thời gian: 70% đầu để **tìm**, 30% sau để **kiểm tra** (không dùng để chọn) → hạn chế tối ưu quá khớp.
+- Chỉ xét tổ hợp đủ số lệnh tối thiểu (mặc định 15) ở phần tìm; bỏ nhóm "Không đủ nến / Không rõ";
+  bỏ tổ hợp chỉ là bản mở rộng của tổ hợp đơn giản hơn đã chọn.
+- "Lặp lại ✓" = ở phần kiểm tra tổ hợp vẫn lãi (setup tốt) / vẫn lỗ (setup xấu) với ≥ 5 lệnh — chỉ nên đưa những tổ hợp này vào EA.
 
 **Trước khi đóng lệnh** — N nến (mặc định 5, khung mặc định M5) đã đóng ngay trước giờ đóng lệnh:
 
@@ -104,6 +115,18 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
 | Lợi nhuận trả lại | Giá tốt nhất trong N nến so với giá đóng (Buy: đỉnh cao nhất − giá đóng), theo ATR |
 | Nến cuối | Pin bar / engulfing ngược chiều lệnh ngay trước khi đóng = đảo chiều |
 
+**Biên độ trong lệnh (MAE / MFE)** — nến khung đóng lệnh chồng lên [giờ vào, giờ ra], theo ATR14 lúc vào:
+
+| Chỉ số | Cách tính |
+|---|---|
+| MAE | Giá đi ngược chiều lệnh xa nhất so với giá vào (Buy: giá vào − đáy thấp nhất) |
+| MFE | Giá đi thuận chiều lệnh xa nhất so với giá vào (Buy: đỉnh cao nhất − giá vào) |
+| MAE lệnh thắng p50/p75/p90 | Gợi ý SL: SL hẹp hơn p90 sẽ cắt mất lệnh thắng |
+| Lệnh thua từng có lãi | % lệnh thua có MFE ≥ 0.5 / 1 / 1.5 ATR — ứng viên dời SL về hoà vốn |
+| Lệnh thắng chốt được | Trung vị (kết quả theo giá / MFE) của lệnh thắng — thấp nghĩa là TP/trailing nhả nhiều |
+
+- Nến đầu/cuối có thể gồm một phần trước khi vào / sau khi ra → dùng M1/M5 cho chính xác. Biểu đồ phân tán cắt ở phân vị 98%.
+
 - "Trả lại" có ý nghĩa nhất với **lệnh thắng** (lọc Thắng trong danh sách): cho biết trailing/TP nhả bao nhiêu.
 - Khi zoom tới một lệnh trên Chart giá, 5 nến trước giờ đóng được tô đậm.
 
@@ -112,6 +135,14 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
 - Swing cần k nến bên phải mới được xác nhận → cấu trúc **trễ k nến** so với lúc đỉnh/đáy hình thành
   (đúng như bot thấy lúc vào lệnh). Giảm độ mạnh swing để bớt trễ.
 - Nhóm dưới 5 lệnh hiện mờ — mẫu quá nhỏ để kết luận.
+
+## Nhật ký lệnh (nhãn & ghi chú)
+
+- Gắn nhãn (Đúng setup, Sai cấu trúc, Vào sớm/muộn, Thoát sớm/muộn, Tin tức, Khác, hoặc nhãn riêng) và ghi chú cho từng lệnh:
+  cột **Nhãn** trong danh sách ở trang Đánh giá lệnh, hoặc ô **Nhãn & ghi chú** khi chọn một lệnh trên Chart giá.
+- Lưu tự động vào `app/journal/trade-journal.json` (theo ticket vị thế MT5, nằm trong `.gitignore`), chỉ khi chạy `npm run dev` trên máy.
+- Trang Đánh giá lệnh có bảng **Theo nhãn của bạn** (thắng/thua theo nhãn) và bộ lọc theo nhãn trong danh sách.
+  Lệnh có nhiều nhãn được tính vào mỗi nhãn.
 
 ## Cách tính
 
@@ -145,6 +176,7 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
 
 ```
 local-folder-dev-endpoint.ts  Dev server: liệt kê / đọc file trong reports/ và candles/ (chỉ localhost)
+trade-journal-dev-endpoint.ts Dev server: đọc / ghi journal/trade-journal.json (chỉ localhost)
 mql5/ExportCandlesCsv.mq5     Script MT5 xuất nến M1/M5/M15 ra CSV
 dashboard-password-guard.ts   Dev server: mật khẩu (Basic Auth) khi public qua tunnel
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
@@ -152,12 +184,19 @@ src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
 src/api/mt5-candles-csv-parser.ts    Đọc nến CSV (script hoặc Export Bars)
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
+src/stores/trade-journal.ts   Nhãn / ghi chú từng lệnh (lưu qua dev server)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
 src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max drawdown
 src/utils/position-dimension-bins.ts  Chia nhóm giờ / ATR / ER5 (biểu đồ cột + bản đồ nhiệt)
 src/utils/price-action-features.ts   ATR, EMA, swing fractal, cấu trúc, mẫu nến (không nhìn trước)
-src/utils/trade-evaluation.ts        Đánh giá bối cảnh từng lệnh + thống kê theo yếu tố
+src/utils/trade-evaluation.ts        Đánh giá bối cảnh từng lệnh
+src/utils/trade-evaluation-features.ts  Danh sách yếu tố + thống kê thắng/thua theo nhóm
+src/utils/candle-resample.ts         Gộp nến sang H1 / H4 / D1
+src/utils/trade-context-features.ts  Khung lớn, ngày hôm trước, số tròn, phiên
+src/utils/setup-combination-finder.ts  Tổ hợp 2–3 điều kiện tốt/xấu nhất, chia tìm / kiểm tra
+src/utils/trade-excursion.ts         MAE / MFE từng lệnh + tóm tắt
+src/utils/trade-journal-stats.ts     Thống kê theo nhãn nhật ký
 src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng lệnh
 src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Reports)
 src/stores/filters.ts         Bộ lọc dùng chung (tài khoản, kỳ, tháng trên lịch)
@@ -165,5 +204,7 @@ src/composables/use-dashboard-data.ts  Dữ liệu đã lọc + quy đổi tiề
 src/components/AnalysisPage.vue  Khung trang: tiêu đề + thanh lọc
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
-                              TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts)
+                              TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
+                              TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
+                              TradeJournalEditor (nhãn & ghi chú)
 ```

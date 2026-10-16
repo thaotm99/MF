@@ -11,6 +11,7 @@ import { money } from '../utils/format'
 import { labelSwings, lastClosedIndex, swingPoints } from '../utils/price-action-features'
 import { barTime, buildTradeMarkers, positionsAtBar, resultColor, symbolMatches } from '../utils/trade-chart-markers'
 import TradeChartTradeList from './TradeChartTradeList.vue'
+import TradeJournalEditor from './TradeJournalEditor.vue'
 
 /**
  * Chart nến (file CSV trong app/candles/) + điểm vào/ra của các vị thế đóng trong kỳ đã chọn.
@@ -90,6 +91,7 @@ const data = ref<Candle[]>([])
 const loadError = ref('')
 const loadingData = ref(false)
 const selectedId = ref<string | undefined>()
+const selected = computed(() => trades.value.find((p) => p.id === selectedId.value))
 
 onMounted(() => {
   if (!el.value) return
@@ -300,6 +302,12 @@ watch(() => [props.from, props.to], fitToRange)
     </div>
     <p class="foot">Giờ server MT5 (UTC+0). Lăn chuột để zoom, kéo để di chuyển. Bấm một lệnh bên dưới để xem chi tiết.</p>
 
+    <section v-if="selected" class="card note-box">
+      <h3>Nhãn &amp; ghi chú · {{ selected.type === 'buy' ? 'Buy' : 'Sell' }} {{ selected.openTime.slice(8, 10) }}/{{ selected.openTime.slice(5, 7) }} {{ selected.openTime.slice(11, 16) }}
+        <b :class="selected.netProfit >= 0 ? 'pos' : 'neg'">{{ money(selected.netProfit, { sign: true }) }} {{ currency }}</b></h3>
+      <TradeJournalEditor :position="selected" />
+    </section>
+
     <TradeChartTradeList :trades="trades" :currency="currency" :selected-id="selectedId" @select="focusTrade" />
   </div>
 </template>
@@ -334,5 +342,7 @@ watch(() => [props.from, props.to], fitToRange)
 .tip-row b.val-neg { color: var(--neg); }
 .line-key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
 .foot { color: var(--faint); font-size: 11px; margin: 6px 0 14px; text-align: center; }
+.note-box { border: 1px solid var(--border); padding: 12px 14px; margin-bottom: 14px; }
+.note-box h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; display: flex; gap: 10px; }
 @media (max-width: 640px) { .chart { height: 320px; } .legend { margin-left: 0; } }
 </style>

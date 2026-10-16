@@ -1,7 +1,8 @@
 import type { Candle } from '../api/mt5-candles-csv-parser'
 import type { Mt5Position } from '../api/mt5-report-parser'
 import { atrAt, candlePattern, lastClosedIndex, type CandlePattern } from './price-action-features'
-import { PATTERN_LABEL, type CategoryStat } from './trade-evaluation'
+import { PATTERN_LABEL } from './trade-evaluation'
+import type { CategoryStat } from './trade-evaluation-features'
 
 /**
  * Phân tích N nến đã đóng ngay trước thời điểm đóng lệnh:

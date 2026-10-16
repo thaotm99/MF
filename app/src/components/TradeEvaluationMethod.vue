@@ -92,6 +92,49 @@ defineProps<{
         ATR hiện tại chia cho trung bình ATR lấy mẫu mỗi 5 nến trong 50 nến trước đó. &gt; 1.25× = biến động tăng, &lt; 0.8× = biến động thấp, còn lại bình thường.
       </p>
 
+      <h4>10. Khung H1 / H4</h4>
+      <p>
+        Gộp nến {{ entryTimeframe }} thành nến H1 / H4 (mốc giờ UTC), rồi xác định cấu trúc HH+HL / LH+LL như mục 2 trên nến khung lớn đã đóng.
+        So với chiều lệnh: thuận / ngược / sideway. Cần ≥ 30 nến khung lớn, nếu thiếu = "không đủ nến".
+      </p>
+      <h4>11. So với ngày hôm trước (PDH / PDL)</h4>
+      <p>
+        Đỉnh / đáy của ngày D1 đã đóng gần nhất (gộp từ nến). Giá vào trên PDH / dưới PDL; sát PDH / sát PDL khi cách &lt; 0.5 ATR; còn lại = trong range ngày trước.
+      </p>
+      <h4>12. Số tròn</h4>
+      <p>
+        Khoảng cách từ giá vào tới số tròn gần nhất, chia ATR. Bước số tròn theo độ lớn giá: ≥ 1000 → 10 (vàng: 4150, 4160…), ≥ 100 → 1, ≥ 10 → 0.1, còn lại 0.001.
+      </p>
+      <h4>13. Phiên giao dịch</h4>
+      <p>Theo giờ server UTC+0: Á 0–7h, Âu 7–12h, Âu–Mỹ chồng nhau 12–16h, Mỹ 16–21h, cuối ngày 21–24h.</p>
+
+      <h3>Tổ hợp setup</h3>
+      <ul>
+        <li>Ghép 2–3 yếu tố lúc vào lệnh ở trên (bỏ nhóm "không đủ nến / không rõ"), tính số lệnh, tỉ lệ thắng, lãi/lỗ cho từng tổ hợp.</li>
+        <li>
+          Lệnh xếp theo giờ vào: <b>70% đầu</b> dùng để tìm tổ hợp (chỉ xét tổ hợp đủ số lệnh tối thiểu), <b>30% sau</b> chỉ để kiểm tra —
+          không dùng để chọn, nên phản ánh kết quả "chưa thấy trước" của tổ hợp.
+        </li>
+        <li>Bỏ tổ hợp chỉ là bản mở rộng của tổ hợp đơn giản hơn đã chọn (ưu tiên ít điều kiện).</li>
+        <li>"Lặp lại ✓" = ở phần kiểm tra tổ hợp vẫn lãi (setup tốt) / vẫn lỗ (setup xấu) với ≥ 5 lệnh.</li>
+      </ul>
+
+      <h3>Biên độ trong lệnh — MAE / MFE (nến {{ exitTimeframe }})</h3>
+      <ul>
+        <li>Dùng các nến chồng lên khoảng [giờ vào, giờ ra]; đổi ra ATR14 lúc vào lệnh.</li>
+        <li><b>MAE</b> = giá đi ngược chiều lệnh xa nhất so với giá vào (Buy: giá vào − Low thấp nhất). <b>MFE</b> = đi thuận xa nhất (Buy: High cao nhất − giá vào).</li>
+        <li><b>MAE p90 của lệnh thắng:</b> 90% lệnh thắng không bị ngược quá mức này → SL hẹp hơn sẽ cắt mất lệnh thắng.</li>
+        <li><b>Lệnh thua từng có lãi:</b> % lệnh thua có MFE ≥ 0.5 / 1 / 1.5 ATR → ứng viên dời SL về hoà vốn.</li>
+        <li><b>Chốt được:</b> trung vị (kết quả theo giá / MFE) của lệnh thắng — thấp nghĩa là TP / trailing nhả nhiều.</li>
+        <li>Nến đầu / cuối có thể gồm một phần trước khi vào / sau khi ra, nên khung càng nhỏ (M1) càng chính xác.</li>
+      </ul>
+
+      <h3>Nhật ký của bạn</h3>
+      <p>
+        Nhãn và ghi chú bạn gắn cho từng lệnh (lưu ở <code>app/journal/trade-journal.json</code>). Bảng "Theo nhãn của bạn" thống kê thắng/thua theo nhãn;
+        lệnh có nhiều nhãn được tính vào mỗi nhãn.
+      </p>
+
       <h3>Trước khi đóng lệnh ({{ exitBars }} nến {{ exitTimeframe }})</h3>
       <ul>
         <li>

@@ -3,10 +3,16 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { TIMEFRAME_SECONDS, type Candle, type CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import type { Mt5Position } from '../api/mt5-report-parser'
 import { useCandlesStore } from '../stores/candles'
+import { useTradeJournalStore } from '../stores/trade-journal'
 import { symbolMatches } from '../utils/trade-chart-markers'
-import { DEFAULT_EVALUATION_OPTIONS, EVALUATION_FEATURES, evaluateTrade, groupByFeature, type TradeEvaluation } from '../utils/trade-evaluation'
+import { DEFAULT_EVALUATION_OPTIONS, evaluateTrade, type TradeEvaluation } from '../utils/trade-evaluation'
+import { EVALUATION_FEATURES, groupByFeature } from '../utils/trade-evaluation-features'
 import { evaluateExit, EXIT_FEATURES, groupExits, type ExitEvaluation } from '../utils/trade-exit-evaluation'
+import { evaluateExcursion } from '../utils/trade-excursion'
+import { groupByTag } from '../utils/trade-journal-stats'
 import EvaluationGroupGrid from './EvaluationGroupGrid.vue'
+import ExcursionSection from './ExcursionSection.vue'
+import SetupCombinationSection from './SetupCombinationSection.vue'
 import TradeEvaluationList from './TradeEvaluationList.vue'
 import TradeEvaluationMethod from './TradeEvaluationMethod.vue'
 
@@ -69,6 +75,7 @@ async function load() {
 watch(() => [fileFor(timeframe.value)?.name, fileFor(exitTimeframe.value)?.name], load)
 onMounted(() => {
   if (candles.state === 'idle') candles.list()
+  void journal.ensureLoaded()
   void load()
 })
 
@@ -82,12 +89,21 @@ const exits = computed(() => {
   for (const p of trades.value) out.set(p.id, evaluateExit(p, exitData.value, TIMEFRAME_SECONDS[exitTimeframe.value], exitBars.value))
   return out
 })
+/** MAE / MFE dùng nến khung đóng lệnh (khung nhỏ, chính xác hơn) */
+const excursions = computed(() =>
+  exitData.value.length ? trades.value.map((p) => ({ p, x: evaluateExcursion(p, exitData.value, TIMEFRAME_SECONDS[exitTimeframe.value]) })) : [],
+)
+const excursionById = computed(() => new Map(excursions.value.map((e) => [e.p.id, e.x])))
 const okCount = computed(() => evals.value.filter((e) => e.ok).length)
 const exitOkCount = computed(() => [...exits.value.values()].filter((e) => e.ok).length)
 
 const entryGroups = computed(() =>
   EVALUATION_FEATURES.map((f) => ({ id: f.id, title: f.title, stats: groupByFeature(evals.value, f, options) })),
 )
+/** Thống kê theo nhãn người dùng gắn (nhật ký) — không cần nến */
+const journal = useTradeJournalStore()
+const tagGroups = computed(() => [{ id: 'tags', title: 'Theo nhãn của bạn', stats: groupByTag(trades.value, journal.entries) }])
+const taggedCount = computed(() => trades.value.filter((p) => journal.entries[p.id]).length)
 const exitGroups = computed(() => {
   const items = trades.value.flatMap((p) => (exits.value.get(p.id) ? [{ exit: exits.value.get(p.id)!, p }] : []))
   return EXIT_FEATURES.map((f) => ({ id: f.id, title: f.title, stats: groupExits(items, f) }))
@@ -131,8 +147,10 @@ const exitGroups = computed(() => {
       <EvaluationGroupGrid :groups="entryGroups" />
       <p class="foot">
         Nến {{ timeframe }} đã đóng trước giờ vào lệnh (không dùng nến tương lai). Swing = fractal {{ options.swingStrength }} nến mỗi bên;
-        HH+HL = tăng, LH+LL = giảm. "Cản" = đỉnh swing phía trên (Buy) / đáy swing phía dưới (Sell). Dòng mờ: dưới 5 lệnh. Lãi/lỗ theo {{ currency }}.
+        HH+HL = tăng, LH+LL = giảm. "Cản" = đỉnh swing phía trên (Buy) / đáy swing phía dưới (Sell). H1/H4 gộp từ nến {{ timeframe }}.
+        Phiên theo giờ server UTC+0. Dòng mờ: dưới 5 lệnh. Lãi/lỗ theo {{ currency }}.
       </p>
+      <SetupCombinationSection :evals="evals" :options="options" :currency="currency" />
     </template>
 
     <template v-if="exits.size">
@@ -147,15 +165,25 @@ const exitGroups = computed(() => {
         <span class="muted">{{ exitOkCount }}/{{ exits.size }} lệnh</span>
       </div>
       <EvaluationGroupGrid :groups="exitGroups" />
+      <ExcursionSection :items="excursions" :timeframe="exitTimeframe" :currency="currency" />
       <p class="foot">
         {{ exitBars }} nến {{ exitTimeframe }} đã đóng ngay trước giờ đóng lệnh. "Chạy thuận / quay đầu" = giá đi ≥ 0.5 ATR theo / ngược chiều lệnh.
         "Trả lại" = giá tốt nhất trong {{ exitBars }} nến so với giá đóng, theo ATR — lớn nghĩa là lệnh nhả nhiều lợi nhuận trước khi đóng.
       </p>
     </template>
 
+    <template v-if="taggedCount">
+      <div class="section-head">
+        <h2 class="section">Nhật ký của bạn</h2>
+        <span class="muted">{{ taggedCount }}/{{ trades.length }} lệnh đã gắn nhãn / ghi chú</span>
+      </div>
+      <EvaluationGroupGrid :groups="tagGroups" />
+      <p class="foot">Gắn nhãn ở cột "Nhãn" bên dưới hoặc trên trang Chart giá. Lệnh có nhiều nhãn được tính vào mỗi nhãn.</p>
+    </template>
+
     <TradeEvaluationMethod :options="options" :entry-timeframe="timeframe" :exit-timeframe="exitTimeframe" :exit-bars="exitBars" />
 
-    <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :currency="currency" :options="options"
+    <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :excursions="excursionById" :currency="currency" :options="options"
       @show="(id) => emit('show', id, timeframe)" />
   </div>
 </template>

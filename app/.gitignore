@@ -25,6 +25,10 @@ reports/*
 candles/*
 !candles/.gitkeep
 
+# Nhật ký nhãn / ghi chú từng lệnh — dữ liệu cá nhân, không commit
+journal/*
+!journal/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

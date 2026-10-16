@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CategoryStat } from '../utils/trade-evaluation'
+import type { CategoryStat } from '../utils/trade-evaluation-features'
 import { money } from '../utils/format'
 
 /** Lưới các bảng thống kê thắng/thua theo nhóm (dùng cho phần vào lệnh và phần đóng lệnh) */
