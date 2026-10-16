@@ -3,15 +3,16 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { TIMEFRAME_SECONDS, type Candle, type CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import type { Mt5Position } from '../api/mt5-report-parser'
 import { useCandlesStore } from '../stores/candles'
-import { money } from '../utils/format'
 import { symbolMatches } from '../utils/trade-chart-markers'
-import {
-  DEFAULT_EVALUATION_OPTIONS, EVALUATION_FEATURES, evaluateTrade, groupByFeature, type TradeEvaluation,
-} from '../utils/trade-evaluation'
+import { DEFAULT_EVALUATION_OPTIONS, EVALUATION_FEATURES, evaluateTrade, groupByFeature, type TradeEvaluation } from '../utils/trade-evaluation'
+import { evaluateExit, EXIT_FEATURES, groupExits, type ExitEvaluation } from '../utils/trade-exit-evaluation'
+import EvaluationGroupGrid from './EvaluationGroupGrid.vue'
 import TradeEvaluationList from './TradeEvaluationList.vue'
 
 /**
- * Đánh giá từng lệnh theo price action: cấu trúc thị trường tại thời điểm vào lệnh (chỉ dùng nến đã đóng trước đó),
+ * Đánh giá từng lệnh theo price action:
+ * - Lúc vào lệnh: cấu trúc thị trường (chỉ dùng nến đã đóng trước giờ vào)
+ * - Trước khi đóng lệnh: N nến đã đóng ngay trước giờ đóng (đà giá, lợi nhuận trả lại, nến đảo chiều)
  * rồi thống kê thắng/thua theo từng yếu tố để biết bot thắng/thua ở bối cảnh nào.
  */
 const props = defineProps<{ positions: Mt5Position[]; currency: string }>()
@@ -19,14 +20,15 @@ const emit = defineEmits<{ show: [positionId: string, timeframe: CandleTimeframe
 
 const candles = useCandlesStore()
 const TIMEFRAMES: CandleTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1']
-/** Lệnh hoà vốn tính là thắng (như MT5); nhóm dưới ngưỡng này làm mờ */
-const MIN_SAMPLE = 5
 
 const symbols = computed(() => [...new Set(candles.files.map((f) => f.symbol))].sort())
 const symbol = ref('')
 const timeframe = ref<CandleTimeframe>('M15')
+/** Khung riêng cho phần đóng lệnh: lệnh bot thường giữ ngắn nên mặc định M5 */
+const exitTimeframe = ref<CandleTimeframe>('M5')
+const exitBars = ref(5)
 const timeframes = computed(() => TIMEFRAMES.filter((tf) => candles.files.some((f) => f.symbol === symbol.value && f.timeframe === tf)))
-const file = computed(() => candles.files.find((f) => f.symbol === symbol.value && f.timeframe === timeframe.value))
+const fileFor = (tf: CandleTimeframe) => candles.files.find((f) => f.symbol === symbol.value && f.timeframe === tf)
 const options = reactive({ ...DEFAULT_EVALUATION_OPTIONS })
 
 watch(symbols, (list) => {
@@ -34,27 +36,36 @@ watch(symbols, (list) => {
   const count = (s: string) => props.positions.filter((p) => symbolMatches(p.symbol, s)).length
   symbol.value = [...list].sort((a, b) => count(b) - count(a))[0] ?? ''
 }, { immediate: true })
-// Mặc định M15 (đủ bối cảnh cho lệnh M1/M5), nếu không có thì M5
+const pick = (list: CandleTimeframe[], current: CandleTimeframe, prefer: CandleTimeframe[]) =>
+  list.includes(current) ? current : (prefer.find((tf) => list.includes(tf)) ?? list[0] ?? current)
 watch(timeframes, (list) => {
-  if (!list.includes(timeframe.value)) timeframe.value = list.includes('M15') ? 'M15' : list.includes('M5') ? 'M5' : (list[0] ?? 'M15')
+  timeframe.value = pick(list, timeframe.value, ['M15', 'M5'])
+  exitTimeframe.value = pick(list, exitTimeframe.value, ['M5', 'M1', 'M15'])
 }, { immediate: true })
 
-const data = ref<Candle[]>([])
+// Nến cho phần vào lệnh và phần đóng lệnh (có thể cùng một file)
+const entryData = ref<Candle[]>([])
+const exitData = ref<Candle[]>([])
 const loading = ref(false)
 const error = ref('')
 async function load() {
-  if (!file.value) return (data.value = [])
   loading.value = true
   error.value = ''
   try {
-    data.value = await candles.load(file.value.name)
+    const [a, b] = await Promise.all([timeframe.value, exitTimeframe.value].map((tf) => {
+      const f = fileFor(tf)
+      return f ? candles.load(f.name) : Promise.resolve([] as Candle[])
+    }))
+    entryData.value = a
+    exitData.value = b
   } catch (e) {
-    data.value = []
+    entryData.value = []
+    exitData.value = []
     error.value = e instanceof Error ? e.message : String(e)
   }
   loading.value = false
 }
-watch(file, load)
+watch(() => [fileFor(timeframe.value)?.name, fileFor(exitTimeframe.value)?.name], load)
 onMounted(() => {
   if (candles.state === 'idle') candles.list()
   void load()
@@ -62,12 +73,24 @@ onMounted(() => {
 
 const trades = computed(() => props.positions.filter((p) => symbolMatches(p.symbol, symbol.value)))
 const evals = computed<TradeEvaluation[]>(() =>
-  data.value.length ? trades.value.map((p) => evaluateTrade(p, data.value, TIMEFRAME_SECONDS[timeframe.value], options)) : [],
+  entryData.value.length ? trades.value.map((p) => evaluateTrade(p, entryData.value, TIMEFRAME_SECONDS[timeframe.value], options)) : [],
 )
+const exits = computed(() => {
+  const out = new Map<string, ExitEvaluation>()
+  if (!exitData.value.length) return out
+  for (const p of trades.value) out.set(p.id, evaluateExit(p, exitData.value, TIMEFRAME_SECONDS[exitTimeframe.value], exitBars.value))
+  return out
+})
 const okCount = computed(() => evals.value.filter((e) => e.ok).length)
-const groups = computed(() => EVALUATION_FEATURES.map((f) => ({ feature: f, stats: groupByFeature(evals.value, f, options) })))
+const exitOkCount = computed(() => [...exits.value.values()].filter((e) => e.ok).length)
 
-const pct = (w: number, n: number) => `${Math.round((w / n) * 100)}%`
+const entryGroups = computed(() =>
+  EVALUATION_FEATURES.map((f) => ({ id: f.id, title: f.title, stats: groupByFeature(evals.value, f, options) })),
+)
+const exitGroups = computed(() => {
+  const items = trades.value.flatMap((p) => (exits.value.get(p.id) ? [{ exit: exits.value.get(p.id)!, p }] : []))
+  return EXIT_FEATURES.map((f) => ({ id: f.id, title: f.title, stats: groupExits(items, f) }))
+})
 </script>
 
 <template>
@@ -78,10 +101,8 @@ const pct = (w: number, n: number) => `${Math.round((w / n) * 100)}%`
           <option v-for="s in symbols" :key="s" :value="s">{{ s }}</option>
         </select>
       </label>
-      <label>Khung đánh giá
-        <select v-model="timeframe" class="select small">
-          <option v-for="tf in timeframes" :key="tf" :value="tf">{{ tf }}</option>
-        </select>
+      <label>Khung vào lệnh
+        <select v-model="timeframe" class="select small"><option v-for="tf in timeframes" :key="tf" :value="tf">{{ tf }}</option></select>
       </label>
       <label>Độ mạnh swing
         <select v-model.number="options.swingStrength" class="select small">
@@ -95,62 +116,54 @@ const pct = (w: number, n: number) => `${Math.round((w / n) * 100)}%`
       </label>
       <span class="muted">
         <template v-if="loading">Đang đọc nến…</template>
-        <template v-else-if="evals.length">Đánh giá {{ okCount }}/{{ evals.length }} lệnh trong kỳ<template v-if="okCount < evals.length"> ({{ evals.length - okCount }} thiếu nến)</template></template>
+        <template v-else-if="evals.length">Đánh giá {{ okCount }}/{{ evals.length }} lệnh<template v-if="okCount < evals.length"> ({{ evals.length - okCount }} thiếu nến)</template></template>
       </span>
     </div>
 
     <p v-if="candles.state === 'ok' && !candles.files.length" class="alert">
-      Cần file nến trong <code>app/candles/</code> (xem tab Chart giá) để đánh giá lệnh.
+      Cần file nến trong <code>app/candles/</code> (xem trang Chart giá) để đánh giá lệnh.
     </p>
     <p v-if="error" class="alert error">Không đọc được nến: {{ error }}</p>
 
     <template v-if="okCount">
-      <div class="grid">
-        <section v-for="g in groups" :key="g.feature.id" class="card group">
-          <h3>{{ g.feature.title }}</h3>
-          <table>
-            <thead><tr><th>Nhóm</th><th class="r">Lệnh</th><th class="r">Thắng</th><th class="r">Lãi/Lỗ</th></tr></thead>
-            <tbody>
-              <tr v-for="s in g.stats" :key="s.label" :class="{ thin: s.count < MIN_SAMPLE }">
-                <td>{{ s.label }}</td>
-                <td class="r num">{{ s.count }}</td>
-                <td class="r num">
-                  <span class="wr"><i :style="{ width: pct(s.wins, s.count) }" /></span>{{ pct(s.wins, s.count) }}
-                </td>
-                <td class="r num" :class="s.pnl >= 0 ? 'pos' : 'neg'">{{ money(s.pnl, { sign: true }) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      </div>
+      <h2 class="section">Lúc vào lệnh</h2>
+      <EvaluationGroupGrid :groups="entryGroups" />
       <p class="foot">
-        Đánh giá trên nến {{ timeframe }} đã đóng trước giờ vào lệnh (không dùng nến tương lai). Swing = fractal {{ options.swingStrength }} nến
-        mỗi bên; HH+HL = tăng, LH+LL = giảm. "Cản" = đỉnh swing phía trên (Buy) / đáy swing phía dưới (Sell). Dòng mờ: dưới {{ MIN_SAMPLE }} lệnh.
-        Lãi/lỗ theo {{ currency }}.
+        Nến {{ timeframe }} đã đóng trước giờ vào lệnh (không dùng nến tương lai). Swing = fractal {{ options.swingStrength }} nến mỗi bên;
+        HH+HL = tăng, LH+LL = giảm. "Cản" = đỉnh swing phía trên (Buy) / đáy swing phía dưới (Sell). Dòng mờ: dưới 5 lệnh. Lãi/lỗ theo {{ currency }}.
       </p>
     </template>
 
-    <TradeEvaluationList v-if="evals.length" :evals="evals" :currency="currency" :options="options"
+    <template v-if="exits.size">
+      <div class="section-head">
+        <h2 class="section">Trước khi đóng lệnh</h2>
+        <label>Khung
+          <select v-model="exitTimeframe" class="select small"><option v-for="tf in timeframes" :key="tf" :value="tf">{{ tf }}</option></select>
+        </label>
+        <label>Số nến
+          <select v-model.number="exitBars" class="select small"><option v-for="n in [3, 5, 10]" :key="n" :value="n">{{ n }} nến</option></select>
+        </label>
+        <span class="muted">{{ exitOkCount }}/{{ exits.size }} lệnh</span>
+      </div>
+      <EvaluationGroupGrid :groups="exitGroups" />
+      <p class="foot">
+        {{ exitBars }} nến {{ exitTimeframe }} đã đóng ngay trước giờ đóng lệnh. "Chạy thuận / quay đầu" = giá đi ≥ 0.5 ATR theo / ngược chiều lệnh.
+        "Trả lại" = giá tốt nhất trong {{ exitBars }} nến so với giá đóng, theo ATR — lớn nghĩa là lệnh nhả nhiều lợi nhuận trước khi đóng.
+      </p>
+    </template>
+
+    <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :currency="currency" :options="options"
       @show="(id) => emit('show', id, timeframe)" />
   </div>
 </template>
 
 <style scoped>
-.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
-.toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.toolbar, .section-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
+.toolbar label, .section-head label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .select.small { min-height: 32px; padding: 4px 8px; }
 .muted { color: var(--muted); font-size: 12px; }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.group { border: 1px solid var(--border); padding: 12px 14px; }
-h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 6px; border-bottom: 1px solid var(--border); }
-td { padding: 6px; border-bottom: 1px solid var(--border); }
-tr.thin td { opacity: .5; }
-.r { text-align: right; }
-.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.wr { display: inline-block; width: 40px; height: 4px; background: #eceef0; border-radius: 2px; margin-right: 6px; vertical-align: middle; overflow: hidden; }
-.wr i { display: block; height: 100%; background: var(--muted); }
+.section { font-size: 14px; font-weight: 600; margin: 8px 0 10px; }
+.section-head { margin-top: 22px; }
+.section-head .section { margin: 0; }
 .foot { color: var(--faint); font-size: 11px; margin: 10px 0 0; text-align: center; }
-@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
 </style>

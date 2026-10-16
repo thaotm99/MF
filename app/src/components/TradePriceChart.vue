@@ -8,7 +8,7 @@ import type { Mt5Position } from '../api/mt5-report-parser'
 import { TIMEFRAME_SECONDS, type Candle, type CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import { useCandlesStore } from '../stores/candles'
 import { money } from '../utils/format'
-import { labelSwings, swingPoints } from '../utils/price-action-features'
+import { labelSwings, lastClosedIndex, swingPoints } from '../utils/price-action-features'
 import { barTime, buildTradeMarkers, positionsAtBar, resultColor, symbolMatches } from '../utils/trade-chart-markers'
 import TradeChartTradeList from './TradeChartTradeList.vue'
 
@@ -133,7 +133,7 @@ async function render() {
   }
   loadingData.value = false
   if (!series) return
-  series.setData(data.value.map((c) => ({ ...c, time: c.time as UTCTimestamp })))
+  setCandles()
   candleTimes = new Set(data.value.map((c) => c.time))
   const focus = pendingFocus.value
   pendingFocus.value = undefined
@@ -179,10 +179,32 @@ function fitToRange() {
 }
 
 /** Bấm một lệnh trong danh sách: zoom tới lệnh, kẻ đường giá vào/ra */
+/** Số nến trước khi đóng lệnh được tô đậm khi zoom tới lệnh (khớp phần "Trước khi đóng" ở trang Đánh giá lệnh) */
+const EXIT_WINDOW_BARS = 5
+const SOLID = { up: '#22a06b', down: '#c9372c' }
+
+/** Đổ nến lên chart; nếu đang chọn lệnh thì tô đậm EXIT_WINDOW_BARS nến đã đóng ngay trước giờ đóng lệnh */
+function setCandles(p?: Mt5Position) {
+  if (!series) return
+  let from = -1
+  let to = -1
+  if (p) {
+    to = lastClosedIndex(data.value, Date.parse(p.closeTime) / 1000, tfSec.value)
+    from = to - EXIT_WINDOW_BARS + 1
+  }
+  series.setData(data.value.map((c, i) => {
+    const bar = { ...c, time: c.time as UTCTimestamp }
+    if (i < from || i > to) return bar
+    const color = c.close >= c.open ? SOLID.up : SOLID.down
+    return { ...bar, color, wickColor: color }
+  }))
+}
+
 function focusTrade(p: Mt5Position) {
   selectedId.value = p.id
   drawMarkers()
   if (!chart || !series) return
+  setCandles(p)
   for (const l of priceLines) series.removePriceLine(l)
   priceLines = [
     series.createPriceLine({ price: p.openPrice, color: resultColor(p), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `Vào ${p.type === 'buy' ? 'Buy' : 'Sell'}` }),
@@ -226,6 +248,7 @@ watch(trades, (list) => {
     selectedId.value = undefined
     for (const l of priceLines) series?.removePriceLine(l)
     priceLines = []
+    setCandles()
   }
   drawMarkers()
 })

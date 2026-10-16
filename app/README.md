@@ -95,7 +95,19 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
 | EMA20 | Giá trên/dưới EMA20, EMA dốc lên/xuống (so với 5 nến trước) |
 | Biến động | ATR14 hiện tại so với trung bình 50 nến: tăng (> 1.25×) / thấp (< 0.8×) / bình thường |
 
-- Danh sách từng lệnh có mô tả bối cảnh và nút **Xem trên chart** (mở tab Chart giá, zoom tới lệnh).
+**Trước khi đóng lệnh** — N nến (mặc định 5, khung mặc định M5) đã đóng ngay trước giờ đóng lệnh:
+
+| Chỉ số | Rule |
+|---|---|
+| Đà giá | Giá đi theo chiều lệnh ≥ +0.5 ATR = chạy thuận; ≤ −0.5 ATR = quay đầu; còn lại = đi ngang |
+| Số nến thuận | Số nến chạy theo chiều lệnh (Buy: nến tăng) trong N nến |
+| Lợi nhuận trả lại | Giá tốt nhất trong N nến so với giá đóng (Buy: đỉnh cao nhất − giá đóng), theo ATR |
+| Nến cuối | Pin bar / engulfing ngược chiều lệnh ngay trước khi đóng = đảo chiều |
+
+- "Trả lại" có ý nghĩa nhất với **lệnh thắng** (lọc Thắng trong danh sách): cho biết trailing/TP nhả bao nhiêu.
+- Khi zoom tới một lệnh trên Chart giá, 5 nến trước giờ đóng được tô đậm.
+
+- Danh sách từng lệnh có mô tả bối cảnh lúc vào + trước khi đóng, và nút **Xem trên chart** (mở Chart giá, zoom tới lệnh).
 - Tab Chart giá có tuỳ chọn **Cấu trúc (HH/HL/LH/LL)** để hiện các điểm swing.
 - Swing cần k nến bên phải mới được xác nhận → cấu trúc **trễ k nến** so với lúc đỉnh/đáy hình thành
   (đúng như bot thấy lúc vào lệnh). Giảm độ mạnh swing để bớt trễ.
@@ -146,6 +158,7 @@ src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max dra
 src/utils/position-dimension-bins.ts  Chia nhóm giờ / ATR / ER5 (biểu đồ cột + bản đồ nhiệt)
 src/utils/price-action-features.ts   ATR, EMA, swing fractal, cấu trúc, mẫu nến (không nhìn trước)
 src/utils/trade-evaluation.ts        Đánh giá bối cảnh từng lệnh + thống kê theo yếu tố
+src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng lệnh
 src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Reports)
 src/stores/filters.ts         Bộ lọc dùng chung (tài khoản, kỳ, tháng trên lịch)
 src/composables/use-dashboard-data.ts  Dữ liệu đã lọc + quy đổi tiền tệ, dùng chung cho mọi trang

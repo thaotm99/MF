@@ -2,9 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { money } from '../utils/format'
 import { PATTERN_LABEL, TREND_LABEL, type EvaluationOptions, type TradeEvaluation } from '../utils/trade-evaluation'
+import type { ExitEvaluation } from '../utils/trade-exit-evaluation'
 
 /** Danh sách từng lệnh kèm bối cảnh price action lúc vào lệnh */
-const props = defineProps<{ evals: TradeEvaluation[]; currency: string; options: EvaluationOptions }>()
+const props = defineProps<{ evals: TradeEvaluation[]; exits: Map<string, ExitEvaluation>; currency: string; options: EvaluationOptions }>()
 const emit = defineEmits<{ show: [positionId: string] }>()
 
 const result = ref<'all' | 'win' | 'loss'>('all')
@@ -19,6 +20,9 @@ watch([result, () => props.evals], () => (shown.value = PAGE))
 
 const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}`
 const alignLabel = (e: TradeEvaluation) => (e.alignment === 'with' ? 'Thuận' : e.alignment === 'against' ? 'Ngược' : 'Sideway')
+/** Tóm tắt N nến trước khi đóng: "Quay đầu · 1/5 thuận · trả 1.2" */
+const exitShort = (x?: ExitEvaluation) =>
+  !x || !x.ok ? '—' : `${x.momentum === 'with' ? 'Chạy thuận' : x.momentum === 'against' ? 'Quay đầu' : 'Đi ngang'} · ${x.favor}/${x.bars} thuận · trả ${x.givebackAtr.toFixed(1)}`
 const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấp' : pos > 2 / 3 ? 'Cao' : 'Giữa')
 </script>
 
@@ -37,7 +41,7 @@ const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấ
         <thead>
           <tr>
             <th>Vào lúc</th><th>Chiều</th><th class="r">Lãi/Lỗ</th><th>Cấu trúc</th><th>Thuận/Ngược</th>
-            <th>Vị trí</th><th class="r">Cản (ATR)</th><th>Nến trước</th><th>Mô tả</th><th />
+            <th>Vị trí</th><th class="r">Cản (ATR)</th><th>Nến trước</th><th>Trước khi đóng</th><th>Mô tả</th><th />
           </tr>
         </thead>
         <tbody>
@@ -53,9 +57,13 @@ const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấ
                 {{ e.levelDistAtr === undefined ? '—' : e.levelDistAtr.toFixed(1) }}
               </td>
               <td>{{ PATTERN_LABEL[e.pattern!] }}<span v-if="e.patternAgree === 'against'" class="neg"> · ngược</span></td>
-              <td class="desc">{{ e.summary }}</td>
             </template>
-            <td v-else colspan="6" class="muted">{{ e.summary }}</td>
+            <td v-else colspan="5" class="muted">{{ e.summary }}</td>
+            <td :class="{ neg: exits.get(e.position.id)?.momentum === 'against' }">{{ exitShort(exits.get(e.position.id)) }}</td>
+            <td class="desc">
+              <template v-if="e.ok">Vào: {{ e.summary }}.</template>
+              <template v-if="exits.get(e.position.id)?.ok"> Trước khi đóng: {{ exits.get(e.position.id)!.summary }}.</template>
+            </td>
             <td><button type="button" class="link" @click="emit('show', e.position.id)">Xem trên chart</button></td>
           </tr>
         </tbody>
