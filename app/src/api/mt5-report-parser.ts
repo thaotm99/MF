@@ -21,6 +21,9 @@ export interface Mt5Position {
   /** ISO, giờ server */
   openTime: string
   closeTime: string
+  /** Giá mở / giá đóng vị thế */
+  openPrice: number
+  closePrice: number
   /** Lãi/lỗ ròng = Profit + Commission + Swap */
   netProfit: number
   /** Comment lệnh (ô ẩn trong bảng Positions), ví dụ "MF_01,A: 2.4,er5: 0.05" */
@@ -207,6 +210,7 @@ function parsePositions(rows: string[][], trs: Element[]): Mt5Position[] {
   const header = rows[headerIdx].map((c) => c.toLowerCase())
   const C = {
     open: header.indexOf('time'), close: header.lastIndexOf('time'), id: header.indexOf('position'),
+    openPrice: header.indexOf('price'), closePrice: header.lastIndexOf('price'),
     symbol: header.indexOf('symbol'), type: header.indexOf('type'), volume: header.indexOf('volume'),
     commission: header.indexOf('commission'), swap: header.indexOf('swap'), profit: header.indexOf('profit'),
   }
@@ -228,6 +232,8 @@ function parsePositions(rows: string[][], trs: Element[]): Mt5Position[] {
       volume: num((c[C.volume] ?? '').split('/')[0]),
       openTime,
       closeTime,
+      openPrice: num(c[C.openPrice]),
+      closePrice: num(c[C.closePrice]),
       netProfit: num(c[C.profit]) + num(c[C.commission]) + num(c[C.swap]),
       ...withComment(trs[i]),
     })

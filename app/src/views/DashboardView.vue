@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onActivated, ref, watch } from 'vue'
 import ClosedDeals from '../components/ClosedDeals.vue'
 import DateRangePicker, { type DateRange } from '../components/DateRangePicker.vue'
 import PnlBreakdownCharts from '../components/PnlBreakdownCharts.vue'
@@ -12,10 +12,12 @@ import { conversionRate, convertDeal, dailyPnl, dayKey, startOfDay, summarize } 
 import { dayExtremes, maxLosingStreak } from '../utils/trading-extremes-stats'
 
 const settings = useSettingsStore()
+// Thư viện chart nến (~150 KB) chỉ tải khi mở tab "Chart giá"
+const TradePriceChart = defineAsyncComponent(() => import('../components/TradePriceChart.vue'))
 const reports = useReportsStore()
 
 const selected = ref<'all' | string>('all')
-const tab = ref<'daily' | 'closed' | 'chart'>('daily')
+const tab = ref<'daily' | 'closed' | 'chart' | 'price'>('daily')
 const now = ref(Date.now())
 
 const [ty, tm] = dayKey(Date.now(), settings.timeZone).split('-').map(Number)
@@ -184,6 +186,7 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
           <button :class="{ active: tab === 'daily' }" @click="tab = 'daily'">PnL hàng ngày</button>
           <button :class="{ active: tab === 'closed' }" @click="tab = 'closed'">Các giao dịch đã đóng</button>
           <button :class="{ active: tab === 'chart' }" @click="tab = 'chart'">Biểu đồ</button>
+          <button :class="{ active: tab === 'price' }" @click="tab = 'price'">Chart giá</button>
         </nav>
         <div class="tab-body">
           <PnlCalendar
@@ -204,7 +207,8 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
             :to="rangeTo"
             :show-account="accounts.length > 1"
           />
-          <PnlBreakdownCharts v-else :positions="positions" :currency="currency" :time-zone="settings.timeZone" />
+          <PnlBreakdownCharts v-else-if="tab === 'chart'" :positions="positions" :currency="currency" :time-zone="settings.timeZone" />
+          <TradePriceChart v-else :positions="positions" :currency="currency" :from="rangeFrom" :to="rangeTo" />
         </div>
       </section>
     </template>

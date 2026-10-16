@@ -43,6 +43,27 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 - Nhiều file cùng một tài khoản được gộp; deal trùng ticket chỉ tính một lần, nên có thể xuất theo từng kỳ.
 - Muốn cập nhật số liệu thì xuất file mới (ghi đè hoặc thêm file).
 
+## Chart giá (điểm vào/ra lệnh)
+
+Tab **Chart giá** vẽ nến từ file CSV trong `app/candles/` (gitignored) và đánh dấu vị thế đóng trong kỳ đã chọn:
+mũi tên xanh dương = vào lệnh (▲ Buy, ▼ Sell), chấm xanh lá / đỏ = ra lệnh lãi / lỗ. Bấm một lệnh trong danh sách
+để zoom tới lệnh và kẻ đường giá vào/ra; rê chuột lên marker để xem chi tiết.
+
+Lấy nến từ MT5 — một trong hai cách:
+
+1. **Script** `app/mql5/ExportCandlesCsv.mq5`: copy vào `MQL5/Scripts/` (File → Open Data Folder), Compile trong
+   MetaEditor, kéo vào chart. Mặc định xuất M1 30 ngày, M5 90 ngày, M15 180 ngày của mã đang mở ra
+   `MQL5/Files/candles/<MÃ>_<KHUNG>.csv`.
+2. **Xuất tay**: View → Symbols → tab Bars → chọn mã, khung, khoảng ngày → Request → Export Bars.
+
+Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên file phải dạng `<MÃ>_<KHUNG>...csv`
+(ví dụ `XAUUSDc_M5.csv`; tên mặc định của Export Bars cũng được).
+
+- Nên đặt **Tools → Options → Charts → Max bars in chart = Unlimited**, nếu không MT5 giới hạn số nến.
+- Lượng lịch sử M1 có được tuỳ server Exness.
+- Giờ trên chart là giờ server MT5 (UTC+0), cùng hệ với báo cáo.
+- Mã được so khớp cả khi khác hậu tố (`XAUUSDc` ↔ `XAUUSD`).
+
 ## Cách tính
 
 | Chỉ số                 | Cách tính                                                                    |
@@ -72,15 +93,18 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 ## Cấu trúc
 
 ```
-mt5-reports-dev-endpoint.ts   Dev server: liệt kê / đọc file trong reports/ (chỉ localhost)
+local-folder-dev-endpoint.ts  Dev server: liệt kê / đọc file trong reports/ và candles/ (chỉ localhost)
+mql5/ExportCandlesCsv.mq5     Script MT5 xuất nến M1/M5/M15 ra CSV
 dashboard-password-guard.ts   Dev server: mật khẩu (Basic Auth) khi public qua tunnel
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
 src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
+src/api/mt5-candles-csv-parser.ts    Đọc nến CSV (script hoặc Export Bars)
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
 src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
-                              PnlBreakdownCharts + PnlBarChart (tab Biểu đồ)
+                              PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
+                              TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts)
 ```

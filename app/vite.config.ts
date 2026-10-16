@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { dashboardPasswordGuard } from './dashboard-password-guard'
-import { mt5ReportsDevEndpoint } from './mt5-reports-dev-endpoint'
+import { mt5CandlesDevEndpoint, mt5ReportsDevEndpoint } from './local-folder-dev-endpoint'
 
 export default defineConfig(({ mode }) => {
   // Đọc DASHBOARD_* từ app/.env (chỉ dùng phía dev server, không đưa xuống trình duyệt)
@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
       dashboardPasswordGuard({ password: env.DASHBOARD_PASSWORD, user: env.DASHBOARD_USER }),
       vue(),
       mt5ReportsDevEndpoint(),
+      mt5CandlesDevEndpoint(),
     ],
     server: {
       // Tên miền của Cloudflare quick tunnel; thêm tên miền riêng qua DASHBOARD_ALLOWED_HOSTS

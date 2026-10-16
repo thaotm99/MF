@@ -21,6 +21,10 @@ dist-ssr
 reports/*
 !reports/.gitkeep
 
+# Nến xuất từ MT5 (CSV) — dữ liệu cục bộ, không commit
+candles/*
+!candles/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
