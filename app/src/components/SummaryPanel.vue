@@ -2,13 +2,25 @@
 import type { Summary } from '../utils/stats'
 import { int, money, splitMoney } from '../utils/format'
 
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   summary: Summary
   equity: number
   unrealized: number
   currency: string
   loading: boolean
+  /** Lãi/lỗ ròng của các lệnh đóng hôm nay (không phụ thuộc kỳ đã chọn) */
+  todayPnl: number
+  todayTrades: number
+  /** Ngày hôm nay, dạng dd/mm */
+  todayLabel: string
 }>()
+
+/** Tỷ lệ chiến thắng = lệnh có lãi (profit ≥ 0, như MT5) / lệnh đã đóng */
+const winRate = computed(() =>
+  props.summary.closedOrders ? (props.summary.profitable / props.summary.closedOrders) * 100 : 0,
+)
 </script>
 
 <template>
@@ -19,6 +31,11 @@ defineProps<{
         {{ splitMoney(summary.netProfit).int }}<small>{{ splitMoney(summary.netProfit).frac }}</small> {{ currency }}
       </div>
       <ul>
+        <li>
+          Lợi nhuận hôm nay ({{ todayLabel }})
+          <b :class="todayPnl > 0 ? 'pos' : todayPnl < 0 ? 'neg' : ''">{{ money(todayPnl, { sign: true }) }} {{ currency }}</b>
+          <i class="hint" :title="`Lãi/lỗ ròng của ${todayTrades} lệnh đóng hôm nay, không phụ thuộc kỳ đã chọn`">i</i>
+        </li>
         <li>Lãi <b>{{ money(summary.profit, { sign: true }) }} {{ currency }}</b></li>
         <li>Lỗ <b>{{ money(summary.loss) }} {{ currency }}</b></li>
         <li>
@@ -36,6 +53,10 @@ defineProps<{
       <div class="label">Lệnh đã đóng <i class="hint" title="Số deal đóng vị thế trong kỳ">i</i></div>
       <div class="big">{{ int(summary.closedOrders) }}</div>
       <ul>
+        <li>
+          Tỷ lệ chiến thắng <b>{{ winRate.toFixed(1) }}%</b>
+          <i class="hint" title="Lệnh có lãi / lệnh đã đóng trong kỳ (lệnh hoà vốn tính là có lãi, như MT5)">i</i>
+        </li>
         <li>Có lãi <b>{{ int(summary.profitable) }}</b></li>
         <li>Thua lỗ <b>{{ int(summary.unprofitable) }}</b></li>
       </ul>
@@ -75,6 +96,8 @@ defineProps<{
 .big small { font-size: 15px; font-weight: 600; }
 ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
 b { color: var(--text); font-weight: 500; }
+b.pos { color: var(--pos); }
+b.neg { color: var(--neg); }
 .warn { color: #9a6b00; }
 @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .big { margin-bottom: 16px; } }
 @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }

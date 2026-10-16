@@ -28,6 +28,8 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 |------------------------|------------------------------------------------------------------------------|
 | Lợi nhuận ròng         | Lãi + lỗ của các deal `out` + phí giao dịch                                  |
 | Lệnh đã đóng           | Số deal `out`. Có lãi: profit ≥ 0, giống "Profit Trades" của MT5             |
+| Tỷ lệ chiến thắng      | Lệnh có lãi / lệnh đã đóng trong kỳ đã chọn                                  |
+| Lợi nhuận hôm nay      | Lãi/lỗ ròng của lệnh đóng hôm nay (theo múi giờ đã chọn), không phụ thuộc kỳ |
 | Phí giao dịch          | Commission + Fee + Swap                                                      |
 | Khối lượng giao dịch   | Σ lot × contract size × giá của deal `in` và `out`, quy về tiền tệ tài khoản  |
 | Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |

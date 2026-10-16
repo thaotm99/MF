@@ -62,6 +62,9 @@ const positions = computed(() =>
 
 const summary = computed(() => summarize(deals.value, rangeFrom.value, rangeTo.value))
 const daily = computed(() => dailyPnl(deals.value, settings.timeZone))
+/** Hôm nay theo múi giờ đã chọn — luôn tính riêng, không theo kỳ đã chọn */
+const todayStat = computed(() => daily.value.get(today.value) ?? { pnl: 0, trades: 0 })
+const todayLabel = computed(() => today.value.slice(8, 10) + '/' + today.value.slice(5, 7))
 
 // Balance / equity lấy từ phần tổng kết của báo cáo mới nhất mỗi tài khoản
 const equity = computed(() =>
@@ -157,6 +160,9 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
           :unrealized="unrealized"
           :currency="currency"
           :loading="loading"
+          :today-pnl="todayStat.pnl"
+          :today-trades="todayStat.trades"
+          :today-label="todayLabel"
         />
       </section>
 
