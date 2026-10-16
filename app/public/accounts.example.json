@@ -1,0 +1,4 @@
+[
+  { "account_id": 33333, "account_name": "MF_01" },
+  { "account_id": 44444, "account_name": "MF_02", "key": "Key chung", "resolve_access_point": true }
+]
