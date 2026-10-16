@@ -50,8 +50,19 @@ watch(timeframes, (list) => {
   if (!list.includes(timeframe.value)) timeframe.value = list.includes('M5') ? 'M5' : (list[0] ?? 'M5')
 }, { immediate: true })
 
+/** Lọc theo chiều lệnh: tất cả / chỉ Buy / chỉ Sell (áp dụng cho marker và danh sách) */
+type SideFilter = 'all' | 'buy' | 'sell'
+const SIDES: { id: SideFilter; label: string }[] = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'buy', label: 'Buy' },
+  { id: 'sell', label: 'Sell' },
+]
+const side = ref<SideFilter>('all')
+
 const trades = computed(() =>
-  props.positions.filter((p) => symbolMatches(p.symbol, symbol.value)).sort((a, b) => b.openTime.localeCompare(a.openTime)),
+  props.positions
+    .filter((p) => symbolMatches(p.symbol, symbol.value) && (side.value === 'all' || p.type === side.value))
+    .sort((a, b) => b.openTime.localeCompare(a.openTime)),
 )
 const tfSec = computed(() => TIMEFRAME_SECONDS[timeframe.value])
 
@@ -171,7 +182,15 @@ watch(file, () => {
   selectedId.value = undefined
   void render()
 })
-watch(trades, drawMarkers)
+// Lệnh đang chọn bị lọc mất (đổi Buy/Sell, đổi kỳ) → bỏ chọn và xoá đường giá vào/ra
+watch(trades, (list) => {
+  if (selectedId.value && !list.some((p) => p.id === selectedId.value)) {
+    selectedId.value = undefined
+    for (const l of priceLines) series?.removePriceLine(l)
+    priceLines = []
+  }
+  drawMarkers()
+})
 watch(() => [props.from, props.to], fitToRange)
 </script>
 
@@ -186,6 +205,10 @@ watch(() => [props.from, props.to], fitToRange)
       <div class="seg" role="radiogroup" aria-label="Khung thời gian">
         <button v-for="tf in timeframes" :key="tf" type="button" role="radio" :aria-checked="tf === timeframe"
           :class="{ on: tf === timeframe }" @click="timeframe = tf">{{ tf }}</button>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Chiều lệnh">
+        <button v-for="o in SIDES" :key="o.id" type="button" role="radio" :aria-checked="side === o.id"
+          :class="{ on: side === o.id }" @click="side = o.id">{{ o.label }}</button>
       </div>
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
       <span class="legend">
