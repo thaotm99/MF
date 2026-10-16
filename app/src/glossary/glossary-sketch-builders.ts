@@ -13,8 +13,29 @@ export interface SketchPriceBand { y1: number; y2: number; text?: string }
 export interface SketchMarker { i: number; y: number; kind: 'buy' | 'sell' | 'exit'; text?: string }
 export interface SketchMeasure { i: number; y1: number; y2: number; text: string }
 
+/** Khung RSI vẽ dưới chart giá (thang 0–100) */
+export interface SketchRsi {
+  /** Giá trị RSI theo từng nến; null = bỏ qua */
+  ys: (number | null)[]
+  /** Tên đường RSI chính trong chú thích (khi có thêm đường phụ) */
+  mainText?: string
+  /** Mức ngang, ví dụ 80 / 40 */
+  levels?: { v: number; text?: string }[]
+  /** Tô vùng giữa 2 mức, ví dụ 40–80 */
+  zone?: { from: number; to: number }
+  /** Nhãn tại điểm RSI */
+  labels?: { i: number; text: string; at?: 'high' | 'low' }[]
+  /** Đoạn nối (ví dụ đường phân kỳ) [chỉ số nến, giá trị RSI] */
+  segments?: { pts: [number, number][]; text?: string }[]
+  /** Đường phụ trên RSI (ví dụ SMA9 / WMA45) */
+  paths?: { ys: (number | null)[]; text?: string; tone?: 'fast' | 'slow' }[]
+}
+
 export interface Sketch {
   caption?: string
+  /** Đoạn nối trên chart giá (ví dụ đường phân kỳ, đường xu hướng) [chỉ số nến, giá] */
+  segments?: { pts: [number, number][]; text?: string }[]
+  rsi?: SketchRsi
   candles: Ohlc[]
   labels?: SketchLabel[]
   lines?: SketchLine[]
@@ -41,6 +62,8 @@ export interface GlossaryTerm {
   sketches?: Sketch[]
   /** Dùng ở đâu trong dashboard */
   usedIn?: string
+  /** Chiếm cả hàng (nội dung dài / bảng) */
+  wide?: boolean
 }
 
 export interface GlossarySection { id: string; title: string; terms: GlossaryTerm[] }
@@ -96,4 +119,44 @@ export function ema(closes: number[], n: number): number[] {
   const out: number[] = []
   closes.forEach((c, i) => out.push(i === 0 ? c : c * k + out[i - 1] * (1 - k)))
   return out
+}
+
+/** Nội suy tuyến tính qua các điểm [chỉ số nến, giá trị] → mảng `n` phần tử (dùng vẽ RSI minh hoạ) */
+export function piecewise(points: [number, number][], n: number): number[] {
+  const out: number[] = []
+  for (let i = 0; i < n; i++) {
+    const k = points.findIndex(([x]) => x >= i)
+    if (k <= 0) out.push(points[Math.max(0, k)][1])
+    else {
+      const [x0, y0] = points[k - 1]
+      const [x1, y1] = points[k]
+      out.push(y0 + ((y1 - y0) * (i - x0)) / (x1 - x0))
+    }
+  }
+  return out
+}
+
+/** RSI Wilder chu kỳ n trên giá đóng (giá trị đầu chưa ổn định → nên bỏ phần khởi động) */
+export function rsiWilder(closes: number[], n: number): number[] {
+  let up = 0
+  let down = 0
+  return closes.map((c, i) => {
+    if (i === 0) return 50
+    const d = c - closes[i - 1]
+    const u = Math.max(0, d)
+    const l = Math.max(0, -d)
+    if (i <= n) {
+      up += u / n
+      down += l / n
+    } else {
+      up = (up * (n - 1) + u) / n
+      down = (down * (n - 1) + l) / n
+    }
+    return down === 0 ? 100 : 100 - 100 / (1 + up / down)
+  })
+}
+
+/** Trung bình động đơn giản chu kỳ n (null cho đến khi đủ n điểm) */
+export function sma(values: number[], n: number): (number | null)[] {
+  return values.map((_, i) => (i < n - 1 ? null : values.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n))
 }

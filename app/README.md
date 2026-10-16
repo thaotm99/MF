@@ -22,7 +22,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Biểu đồ | `/breakdown` | Lãi/lỗ theo giờ, chiều, khối lượng, mã, ATR, ER5 + bản đồ nhiệt |
 | Lệnh đã đóng | `/trades` | Danh sách deal đóng |
 | So sánh tài khoản | `/compare` | Bảng chỉ số mọi tài khoản |
-| Thuật ngữ | `/glossary` | Giải thích từng cách phân tích / đánh giá kèm chart minh hoạ (swing, HH/HL, sideway, mẫu nến, ATR, EMA, ER5, PDH/PDL, MAE/MFE, nhãn tự động…) |
+| Thuật ngữ | `/glossary` | Giải thích từng cách phân tích / đánh giá kèm chart minh hoạ (swing, HH/HL, sideway, mẫu nến, ATR, EMA, ER5, PDH/PDL, MAE/MFE, nhãn tự động, RSI theo ebook John Hayden: vùng 80/40–60/20, phân kỳ, MDRP…) |
 | Báo cáo MT5 | `/reports` | File báo cáo, tiền tệ hiển thị, múi giờ |
 
 Bộ lọc **tài khoản** và **thời gian** dùng chung cho mọi trang và được giữ khi chuyển trang. Mỗi lần chuyển trang,
@@ -223,6 +223,7 @@ src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng l�
 src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Glossary, Reports)
 src/glossary/                 Nội dung trang Thuật ngữ: kiểu + hàm dựng nến minh hoạ, thuật ngữ theo nhóm
 src/components/GlossaryCandleSketch.vue  Vẽ nến minh hoạ (SVG) + nhãn, đường, vùng, điểm vào/ra
+src/components/GlossaryRsiPanel.vue     Khung RSI bên dưới hình minh hoạ (mức, vùng, đường phân kỳ, MA)
 src/stores/filters.ts         Bộ lọc dùng chung (tài khoản, kỳ, tháng trên lịch)
 src/composables/use-dashboard-data.ts  Dữ liệu đã lọc + quy đổi tiền tệ, dùng chung cho mọi trang
 src/components/AnalysisPage.vue  Khung trang: tiêu đề + thanh lọc

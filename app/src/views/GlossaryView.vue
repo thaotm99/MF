@@ -35,13 +35,13 @@ const count = computed(() => sections.value.reduce((n, s) => n + s.terms.length,
     <section v-for="s in sections" :id="s.id" :key="s.id" class="section">
       <h2>{{ s.title }}</h2>
       <div class="grid">
-        <article v-for="t in s.terms" :id="`term-${t.id}`" :key="t.id" class="card term" :class="{ wide: (t.sketches?.length ?? 0) >= 2 }">
+        <article v-for="t in s.terms" :id="`term-${t.id}`" :key="t.id" class="card term" :class="{ wide: t.wide || (t.sketches?.length ?? 0) >= 2 }">
           <h3>{{ t.title }} <small v-if="t.aka">{{ t.aka }}</small></h3>
           <div v-if="t.sketches?.length" class="sketches" :style="{ '--cols': t.sketches.length }">
             <GlossaryCandleSketch v-for="(sk, k) in t.sketches" :key="k" :sketch="sk" />
           </div>
           <!-- Nội dung tĩnh trong mã nguồn (không phải dữ liệu người dùng) -->
-          <p v-for="(b, k) in t.body" :key="k" v-html="b" />
+          <div v-for="(b, k) in t.body" :key="k" class="para" v-html="b" />
           <p v-if="t.id === 'session'" class="sessions" aria-label="Các phiên theo giờ UTC">
             <span style="--w: 7">Á 0–7h</span><span style="--w: 5">Âu 7–12h</span><span style="--w: 4" class="hot">Âu–Mỹ 12–16h</span><span style="--w: 5">Mỹ 16–21h</span><span style="--w: 3">21–24h</span>
           </p>
@@ -71,7 +71,13 @@ h2 { font-size: 16px; margin: 22px 0 10px; }
 h3 { margin: 0 0 10px; font-size: 14px; }
 h3 small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 6px; }
 .sketches { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
-.term p { margin: 6px 0; font-size: 13px; line-height: 1.55; }
+.term p, .term .para { margin: 6px 0; font-size: 13px; line-height: 1.55; }
+.term :deep(table.mini) { border-collapse: collapse; font-size: 12px; margin: 8px 0; width: 100%; }
+.term :deep(table.mini th), .term :deep(table.mini td) { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+.term :deep(table.mini thead th) { background: var(--bg); font-weight: 600; }
+.term :deep(.two-tables) { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.term :deep(ol.steps) { margin: 6px 0; padding-left: 20px; font-size: 13px; line-height: 1.55; }
+.term :deep(ol.steps li) { margin: 3px 0; }
 .term :deep(code) { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 .used { color: var(--faint); font-size: 12px !important; }
 .sessions { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
@@ -84,5 +90,7 @@ h3 small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 
   .toolbar { position: static; }
   .grid { grid-template-columns: 1fr; }
   .sketches { grid-template-columns: 1fr; }
+  .term :deep(.two-tables) { grid-template-columns: 1fr; }
+  .term :deep(table.mini) { display: block; overflow-x: auto; }
 }
 </style>

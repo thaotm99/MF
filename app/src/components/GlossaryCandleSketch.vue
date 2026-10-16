@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Sketch } from '../glossary/glossary-sketch-builders'
+import GlossaryRsiPanel from './GlossaryRsiPanel.vue'
 
 /** Vẽ nến minh hoạ (SVG) + nhãn, đường giá, vùng tô, điểm vào/ra, đoạn đo — dùng ở trang Thuật ngữ */
 const props = defineProps<{ sketch: Sketch }>()
 
 const W = 360
-const H = 190
+/** Chiều cao phần chart giá; có RSI thì thêm khung RSI bên dưới */
+const PRICE_H = 190
+const RSI_H = 78
+const H = computed(() => (props.sketch.rsi ? PRICE_H + RSI_H + 10 : PRICE_H))
 const M = { top: 18, right: 64, bottom: 14, left: 8 }
 
 const geo = computed(() => {
@@ -25,7 +29,7 @@ const geo = computed(() => {
   const min = lo - pad
   const max = hi + pad
   const pw = W - M.left - M.right
-  const ph = H - M.top - M.bottom
+  const ph = PRICE_H - M.top - M.bottom
   const step = pw / n
   const x = (i: number) => M.left + step * (i + 0.5)
   const y = (v: number) => M.top + ph - ((v - min) / (max - min)) * ph
@@ -74,8 +78,8 @@ const lastPathPoint = computed(() => {
         <text v-if="b.text" class="band-text" :x="geo.x(b.from) - geo.step / 2 + 3" :y="M.top - 7">{{ b.text }}</text>
       </g>
       <g v-for="(d, k) in sketch.dividers ?? []" :key="'d' + k">
-        <line class="divider" :x1="geo.x(d.i) - geo.step / 2" :x2="geo.x(d.i) - geo.step / 2" :y1="M.top - 4" :y2="H - M.bottom + 4" />
-        <text v-if="d.text" class="band-text" :x="geo.x(d.i) - geo.step / 2 + 3" :y="H - 3">{{ d.text }}</text>
+        <line class="divider" :x1="geo.x(d.i) - geo.step / 2" :x2="geo.x(d.i) - geo.step / 2" :y1="M.top - 4" :y2="PRICE_H - M.bottom + 4" />
+        <text v-if="d.text" class="band-text" :x="geo.x(d.i) - geo.step / 2 + 3" :y="PRICE_H - 3">{{ d.text }}</text>
       </g>
       <!-- Đường ngang -->
       <g v-for="(l, k) in sketch.lines ?? []" :key="'l' + k">
@@ -91,6 +95,12 @@ const lastPathPoint = computed(() => {
       <polyline v-if="zigzagPts" class="zigzag" :points="zigzagPts" />
       <path v-if="pathD" class="path" :d="pathD" />
       <text v-if="sketch.path?.text && lastPathPoint" class="path-text" :x="lastPathPoint.x + 6" :y="lastPathPoint.y" dy="0.32em">{{ sketch.path.text }}</text>
+      <!-- Đoạn nối trên giá (phân kỳ, đường xu hướng) -->
+      <g v-for="(sg, k) in sketch.segments ?? []" :key="'sg' + k">
+        <polyline class="seg" :points="sg.pts.map(([i, v]) => `${geo.x(i)},${geo.y(v)}`).join(' ')" />
+        <text v-if="sg.text" class="seg-text" :x="geo.x(sg.pts[sg.pts.length - 1][0]) + 5" :y="geo.y(sg.pts[sg.pts.length - 1][1])" dy="0.32em">{{ sg.text }}</text>
+      </g>
+      <GlossaryRsiPanel v-if="sketch.rsi" :rsi="sketch.rsi" :x="geo.x" :step="geo.step" :left="M.left" :width="geo.pw" :top="PRICE_H" :height="RSI_H" />
       <!-- Đoạn đo -->
       <g v-for="(m, k) in sketch.measures ?? []" :key="'m' + k" class="measure">
         <line :x1="geo.x(m.i)" :x2="geo.x(m.i)" :y1="geo.y(m.y1)" :y2="geo.y(m.y2)" />
@@ -125,6 +135,8 @@ figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-to
 .wick { stroke-width: 1.2; }
 .zigzag { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 2; }
 .path { fill: none; stroke: var(--accent); stroke-width: 2; }
+.seg { fill: none; stroke: var(--accent); stroke-width: 2; }
+.seg-text { fill: var(--accent); font-size: 10px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
 .path-text { fill: var(--accent); font-size: 10px; font-weight: 600; }
 .hline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
 .hline.solid { stroke-dasharray: none; }
