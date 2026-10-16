@@ -16,6 +16,7 @@ defineProps<{
     <summary>Cách tính &amp; phân tích</summary>
 
     <div class="body">
+      <p class="note">Xem hình minh hoạ (HH/HL, sideway, pin bar, MAE/MFE…) ở <RouterLink to="/glossary">trang Thuật ngữ</RouterLink>.</p>
       <h3>Nguyên tắc chung</h3>
       <ul>
         <li>

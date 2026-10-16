@@ -35,6 +35,7 @@ const NAV = [
     ],
   },
   { group: 'Dữ liệu', items: [{ to: '/reports', label: 'Báo cáo MT5', icon: 'M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8zM14 3v5h5M9 13h6M9 17h6' }] },
+  { group: 'Tham khảo', items: [{ to: '/glossary', label: 'Thuật ngữ', icon: 'M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM4 5v16M8 7h7M8 11h7' }] },
 ]
 </script>
 

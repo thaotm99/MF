@@ -19,6 +19,7 @@ defineProps<{ entryTimeframe?: string; exitTimeframe?: string }>()
         <dd>{{ r.description }}</dd>
       </template>
     </dl>
+    <p class="muted">Hình minh hoạ từng nhãn: <RouterLink to="/glossary#trade">trang Thuật ngữ</RouterLink>.</p>
     <p class="muted">"Tin tức", "Đúng setup", "Sai cấu trúc" cần bạn tự gán (máy chưa có lịch tin, và đây là đánh giá của bạn).</p>
   </details>
 </template>
