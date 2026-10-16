@@ -1,3 +1,4 @@
+import { parseEntryComment } from './mt5-entry-comment-parser'
 import type { Deal } from './types'
 
 /**
@@ -22,6 +23,12 @@ export interface Mt5Position {
   closeTime: string
   /** Lãi/lỗ ròng = Profit + Commission + Swap */
   netProfit: number
+  /** Comment lệnh (ô ẩn trong bảng Positions), ví dụ "MF_01,A: 2.4,er5: 0.05" */
+  comment?: string
+  /** ATR lúc vào lệnh, đọc từ comment */
+  atr?: number
+  /** ER khung M5 lúc vào lệnh, đọc từ comment */
+  er5?: number
 }
 
 export interface Mt5Report {
@@ -167,7 +174,7 @@ export function parseMt5Report(html: string): Mt5Report {
   }
 
   // ----- Bảng Positions (vị thế đã đóng) -----
-  const positions = parsePositions(rows)
+  const positions = parsePositions(rows, trs)
 
   // ----- Tổng kết -----
   const after = rows.slice(headerIdx)
@@ -191,7 +198,7 @@ export function parseMt5Report(html: string): Mt5Report {
 }
 
 /** Bảng Positions: Time | Position | Symbol | Type | Volume | Price | S / L | T / P | Time | Price | Commission | Swap | Profit */
-function parsePositions(rows: string[][]): Mt5Position[] {
+function parsePositions(rows: string[][], trs: Element[]): Mt5Position[] {
   const headerIdx = rows.findIndex((c) => {
     const lc = c.map((x) => x.toLowerCase())
     return lc.includes('position') && lc.includes('symbol') && lc.includes('profit') && lc.includes('s / l')
@@ -222,6 +229,7 @@ function parsePositions(rows: string[][]): Mt5Position[] {
       openTime,
       closeTime,
       netProfit: num(c[C.profit]) + num(c[C.commission]) + num(c[C.swap]),
+      ...withComment(trs[i]),
     })
   }
   return out
@@ -239,4 +247,10 @@ export function estimateContract(symbol: string): { size: number; base: string; 
   const quote = s.slice(3)
   const size = base === 'XAU' ? 100 : base === 'XAG' ? 5000 : /^X(PT|PD)/.test(s) ? 100 : 100_000
   return { size, base, quote }
+}
+
+/** Comment nằm trong ô ẩn (class="hidden") của hàng Positions → kèm ATR / ER5 lúc vào lệnh. */
+function withComment(tr: Element): Pick<Mt5Position, 'comment' | 'atr' | 'er5'> {
+  const comment = clean(tr.querySelector('td.hidden')?.textContent) || undefined
+  return { comment, ...parseEntryComment(comment) }
 }

@@ -34,7 +34,8 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Khối lượng giao dịch   | Σ lot × contract size × giá của deal `in` và `out`, quy về tiền tệ tài khoản  |
 | Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |
 | Lịch PnL hàng ngày     | Nhóm deal theo ngày (giờ server MT5 UTC+0 hoặc giờ máy)                      |
-| Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã |
+| Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã / ATR / ER5 |
+| ATR, ER5 lúc vào lệnh  | Đọc từ comment lệnh của EA: `A:` (cũ `ATR :`), `er5:` (cũ `er:`, ER trên M5). ATR chia bước 0.5 (gộp ≥ 5), ER5 bước 0.1. Lệnh không có giá trị hoặc comment bị MT5 cắt (31 ký tự) thì bỏ qua |
 
 - **Tiền tệ hiển thị:** nút **USD | USC** trên trang Tổng quan, mặc định USD, được nhớ trong trình duyệt.
   1 USD = 100 USC; áp dụng cho mọi số tiền, nên gộp tài khoản USD với tài khoản cent vẫn cộng đúng.
@@ -50,6 +51,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 ```
 mt5-reports-dev-endpoint.ts   Dev server: liệt kê / đọc file trong reports/ (chỉ localhost)
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
+src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày

@@ -11,7 +11,13 @@ export interface BarItem {
   wins: number
 }
 
-const props = defineProps<{ title: string; items: BarItem[]; currency: string }>()
+const props = defineProps<{
+  title: string
+  items: BarItem[]
+  currency: string
+  /** Ghi chú nhỏ dưới tiêu đề (ví dụ số lệnh không có dữ liệu) */
+  note?: string
+}>()
 
 // ----- Kích thước: đo bề rộng thật để chữ không bị méo -----
 const root = ref<HTMLElement | null>(null)
@@ -97,6 +103,7 @@ const winRate = (b: BarItem) => (b.count ? Math.round((b.wins / b.count) * 100) 
         {{ showTable ? 'Biểu đồ' : 'Bảng' }}
       </button>
     </header>
+    <p v-if="note" class="note">{{ note }}</p>
 
     <p v-if="!items.length" class="empty">Không có lệnh trong kỳ đã chọn.</p>
 
@@ -160,6 +167,7 @@ const winRate = (b: BarItem) => (b.count ? Math.round((b.wins / b.count) * 100) 
 .chart { padding: 14px 16px 10px; min-width: 0; border: 1px solid var(--border); }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.note { margin: -2px 0 6px; color: var(--muted); font-size: 11px; }
 .link { border: 0; background: none; color: var(--accent); font-size: 12px; padding: 2px 4px; }
 .plot { position: relative; width: 100%; }
 svg { display: block; overflow: visible; }
