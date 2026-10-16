@@ -10,6 +10,8 @@ const props = defineProps<{
   daily: Map<string, DayStat>
   timeZone: TimeZoneMode
   loading: boolean
+  /** Ký hiệu tiền tệ hiển thị trên ô, ví dụ $ hoặc USC */
+  currency: string
 }>()
 const emit = defineEmits<{ change: [year: number, month: number]; refresh: [] }>()
 
@@ -62,7 +64,7 @@ function goToday() {
       <button class="nav" aria-label="Tháng sau" @click="shift(1)">›</button>
       <div class="spacer" />
       <span class="muted">Số liệu thống kê hằng tháng:</span>
-      <span class="chip" :class="monthStats.pnl >= 0 ? 'chip-pos' : 'chip-neg'">{{ moneyVi(monthStats.pnl) }} $</span>
+      <span class="chip" :class="monthStats.pnl >= 0 ? 'chip-pos' : 'chip-neg'">{{ moneyVi(monthStats.pnl) }} {{ currency }}</span>
       <span class="chip chip-gray">Ngày giao dịch: {{ monthStats.days }}</span>
       <button class="nav" :class="{ spin: loading }" title="Tải lại" @click="emit('refresh')">↻</button>
     </div>
@@ -72,7 +74,7 @@ function goToday() {
       <div v-for="c in cells" :key="c.key" class="cell" :class="{ out: !c.inMonth }">
         <span class="day" :class="{ today: c.key === todayKey }">{{ c.day }}</span>
         <div v-if="c.inMonth && c.stat" class="stat" :class="c.stat.pnl >= 0 ? 'stat-pos' : 'stat-neg'">
-          <b>{{ moneyVi(c.stat.pnl) }} $</b>
+          <b>{{ moneyVi(c.stat.pnl) }} {{ currency }}</b>
           <span>Các giao dịch: {{ c.stat.trades }}</span>
         </div>
       </div>

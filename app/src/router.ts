@@ -6,11 +6,12 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Tổng quan' } },
     {
-      path: '/accounts',
-      name: 'accounts',
-      component: () => import('./views/AccountsView.vue'),
-      meta: { title: 'Quản lý tài khoản' },
+      path: '/reports',
+      name: 'reports',
+      component: () => import('./views/ReportsView.vue'),
+      meta: { title: 'Báo cáo MT5' },
     },
+    { path: '/accounts', redirect: '/reports' },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

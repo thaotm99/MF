@@ -1,4 +1,4 @@
-import type { Deal, InstrumentConditionResponse } from '../api/types'
+import type { Deal } from '../api/types'
 import type { TimeZoneMode } from '../stores/settings'
 
 /** Deal đã gắn thêm thông tin tài khoản để tổng hợp nhiều tài khoản. */
@@ -26,16 +26,29 @@ export function dealCost(d: Deal): number {
 export const closeProfit = (d: Deal) => (d.type === 'close' ? num(d.profit?.amount) : 0)
 
 /**
- * Notional = volume (lot) × contract_size × giá, quy về tiền tệ tài khoản.
- * Chỉ tính được khi tiền tệ tài khoản là quote hoặc base của mã.
+ * Quy giá trị theo `ccy` sang tiền tệ tài khoản; tài khoản cent (USC) = USD × 100.
+ * Trả về null nếu không quy đổi được.
  */
-export function notionalOf(d: Deal, cond: InstrumentConditionResponse | null, currency: string): number | null {
-  if (!isTradeDeal(d) || !cond?.contract_size) return null
-  const units = num(d.volume) * num(cond.contract_size)
-  if (cond.quote_currency === currency) return units * num(d.price)
-  if (cond.base_currency === currency) return units
+function inAccountCurrency(amount: number, ccy: string | undefined, currency: string): number | null {
+  if (ccy === currency) return amount
+  if (currency === 'USC' && ccy === 'USD') return amount * 100
   return null
 }
+
+/**
+ * Notional = volume (lot) × contract_size × giá, quy về tiền tệ tài khoản.
+ * Chỉ tính được khi tiền tệ tài khoản (hoặc USD với tài khoản cent) là quote hoặc base của mã.
+ */
+export function notionalFrom(
+  d: Deal,
+  contract: { size: number; base?: string; quote?: string } | null,
+  currency: string,
+): number | null {
+  if (!isTradeDeal(d) || !contract?.size) return null
+  const units = num(d.volume) * contract.size
+  return inAccountCurrency(units * num(d.price), contract.quote, currency) ?? inAccountCurrency(units, contract.base, currency)
+}
+
 
 export interface Summary {
   netProfit: number
@@ -71,10 +84,11 @@ export function summarize(deals: AccountDeal[], from: number, to: number): Summa
     if (deal.type === 'close') {
       const p = closeProfit(deal)
       s.closedOrders++
-      if (p > 0) {
+      // Như "Profit Trades" của MT5: lệnh hoà vốn (profit = 0) tính là lệnh có lãi
+      if (p >= 0) {
         s.profit += p
         s.profitable++
-      } else if (p < 0) {
+      } else {
         s.loss += p
         s.unprofitable++
       }

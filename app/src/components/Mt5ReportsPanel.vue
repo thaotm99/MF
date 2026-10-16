@@ -19,7 +19,7 @@ const tradeCount = (id: string) =>
     </div>
 
     <p class="muted small">
-      Tài khoản MT4/MT5 không dùng được API. Trong MT5: <b>Toolbox → History</b> → chuột phải → <b>Report → HTML</b>,
+      Trong MT5: <b>Toolbox → History</b> → chuột phải → <b>Report → HTML</b> (giao diện MT5 bằng tiếng Anh),
       rồi lưu file vào thư mục <code>app/{{ reports.dir }}/</code> và bấm "Tải lại báo cáo". Nhiều file cùng một tài
       khoản sẽ được gộp (deal trùng chỉ tính một lần). Thư mục này nằm trong <code>.gitignore</code>.
     </p>

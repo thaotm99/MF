@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { decodeReport, estimateContract, parseMt5Report, type Mt5Report } from '../api/mt5-report-parser'
-import type { AccountEntry, Deal } from '../api/types'
-import type { AccountDeal } from '../utils/stats'
-import { useSettingsStore } from './settings'
+import type { Deal } from '../api/types'
+import { notionalFrom, type AccountDeal } from '../utils/stats'
 
 export interface ReportFile {
   name: string
@@ -32,18 +31,11 @@ export interface Mt5Account {
 export const REPORT_ACCOUNT_PREFIX = 'mt5:'
 
 function notional(d: Deal, currency: string): number | null {
-  if ((d.type !== 'open' && d.type !== 'close') || !d.instrument) return null
-  const c = estimateContract(d.instrument)
-  if (!c) return null
-  const units = Number(d.volume ?? 0) * c.size
-  if (c.quote === currency) return units * Number(d.price ?? 0)
-  if (c.base === currency) return units
-  return null
+  return d.instrument ? notionalFrom(d, estimateContract(d.instrument), currency) : null
 }
 
 /** Báo cáo MT5 đặt trong app/reports/, đọc qua dev server. */
 export const useReportsStore = defineStore('reports', () => {
-  const settings = useSettingsStore()
   const files = ref<ReportFile[]>([])
   const dir = ref('reports')
   const state = ref<'idle' | 'loading' | 'ok' | 'unavailable'>('idle')
@@ -103,8 +95,8 @@ export const useReportsStore = defineStore('reports', () => {
       return {
         id,
         login,
-        // Ưu tiên tên trong accounts.json / tài khoản đã thêm (ví dụ MF_01)
-        label: `${settings.allAccounts.find((a) => a.accountId === login)?.label ?? `#${login}`} (MT5)`,
+        // "Name:" trong báo cáo, ví dụ "MF_01 240826"
+        label: latest.name || `#${login}`,
         currency: latest.currency,
         server: latest.server,
         files: sorted.map((f) => f.name),
@@ -116,12 +108,7 @@ export const useReportsStore = defineStore('reports', () => {
     })
   })
 
-  /** Dạng AccountEntry để hiển thị chung với tài khoản API trong ô chọn. */
-  const entries = computed<AccountEntry[]>(() =>
-    accounts.value.map((a) => ({ id: a.id, label: a.label, accountId: a.login, keyId: '', resolveAccessPoint: false })),
-  )
-
   const byId = (id: string) => accounts.value.find((a) => a.id === id)
 
-  return { files, dir, state, accounts, entries, load, byId }
+  return { files, dir, state, accounts, load, byId }
 })

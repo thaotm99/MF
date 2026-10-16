@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import { useReportsStore } from './stores/reports'
-import { useSettingsStore } from './stores/settings'
 
-// Khi mở app: đọc danh sách tài khoản (public/accounts.json), key từ .env và báo cáo MT5 (qua dev server)
-const settings = useSettingsStore()
-settings.loadAccountsFile()
-settings.loadEnvKey()
+// Khi mở app: đọc các báo cáo MT5 trong app/reports/ (qua dev server)
 useReportsStore().load()
 </script>
 
@@ -15,7 +11,7 @@ useReportsStore().load()
     <div class="inner">
       <span class="brand">Exness Dashboard</span>
       <RouterLink to="/" class="link" exact-active-class="active">Tổng quan</RouterLink>
-      <RouterLink to="/accounts" class="link" active-class="active">Quản lý tài khoản</RouterLink>
+      <RouterLink to="/reports" class="link" active-class="active">Báo cáo MT5</RouterLink>
     </div>
   </nav>
   <RouterView v-slot="{ Component }">
