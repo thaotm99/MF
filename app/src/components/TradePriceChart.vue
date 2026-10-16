@@ -12,6 +12,11 @@ import { labelSwings, lastClosedIndex, swingPoints } from '../utils/price-action
 import { barTime, buildTradeMarkers, positionsAtBar, resultColor, symbolMatches } from '../utils/trade-chart-markers'
 import TradeChartTradeList from './TradeChartTradeList.vue'
 import TradeJournalEditor from './TradeJournalEditor.vue'
+import AutoTagLegend from './AutoTagLegend.vue'
+import TradeTagFilterSelect from './TradeTagFilterSelect.vue'
+import { useTradeAutoTags } from '../composables/use-trade-auto-tags'
+import { useTradeJournalStore } from '../stores/trade-journal'
+import { matchesTagFilter } from '../utils/trade-journal-stats'
 
 /**
  * Chart nến (file CSV trong app/candles/) + điểm vào/ra của các vị thế đóng trong kỳ đã chọn.
@@ -83,10 +88,18 @@ const RESULTS: { id: ResultFilter; label: string }[] = [
 ]
 const result = ref<ResultFilter>('all')
 
+/** Nhãn tự động (khung M15 / M5 mặc định) + nhãn của bạn; lọc theo nhãn */
+const journal = useTradeJournalStore()
+const allPositions = computed(() => props.positions)
+const { tags: autoTags, used: autoTfs } = useTradeAutoTags(allPositions)
+const tagFilter = ref('')
+const autoTfText = computed(() => autoTfs.value.find((u) => u.symbol === symbol.value))
+
 const trades = computed(() =>
   props.positions
     .filter((p) => symbolMatches(p.symbol, symbol.value) && (side.value === 'all' || p.type === side.value))
     .filter((p) => result.value === 'all' || (result.value === 'win') === p.netProfit >= 0)
+    .filter((p) => matchesTagFilter(tagFilter.value, journal.entries[p.id]?.tags ?? [], autoTags.value.get(p.id) ?? []))
     .sort((a, b) => b.openTime.localeCompare(a.openTime)),
 )
 const tfSec = computed(() => TIMEFRAME_SECONDS[timeframe.value])
@@ -104,6 +117,7 @@ const selectedId = ref<string | undefined>()
 const selected = computed(() => trades.value.find((p) => p.id === selectedId.value))
 
 onMounted(() => {
+  void journal.ensureLoaded()
   if (!el.value) return
   chart = createChart(el.value, {
     autoSize: true,
@@ -254,7 +268,7 @@ watch(file, () => {
   selectedId.value = undefined
   void render()
 })
-// Lệnh đang chọn bị lọc mất (đổi Buy/Sell, Thắng/Thua, đổi kỳ) → bỏ chọn và xoá đường giá vào/ra
+// Lệnh đang chọn bị lọc mất (đổi Buy/Sell, Thắng/Thua, nhãn, đổi kỳ) → bỏ chọn và xoá đường giá vào/ra
 watch(trades, (list) => {
   if (selectedId.value && !list.some((p) => p.id === selectedId.value)) {
     selectedId.value = undefined
@@ -287,6 +301,7 @@ watch(() => [props.from, props.to], fitToRange)
         <button v-for="o in RESULTS" :key="o.id" type="button" role="radio" :aria-checked="result === o.id"
           :class="{ on: result === o.id }" @click="result = o.id">{{ o.label }}</button>
       </div>
+      <TradeTagFilterSelect v-model="tagFilter" />
       <label class="check"><input v-model="showSwings" type="checkbox" /> Cấu trúc (HH/HL/LH/LL)</label>
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
       <span class="legend">
@@ -319,10 +334,11 @@ watch(() => [props.from, props.to], fitToRange)
     <section v-if="selected" class="card note-box">
       <h3>Nhãn &amp; ghi chú · {{ selected.type === 'buy' ? 'Buy' : 'Sell' }} {{ selected.openTime.slice(8, 10) }}/{{ selected.openTime.slice(5, 7) }} {{ selected.openTime.slice(11, 16) }}
         <b :class="selected.netProfit >= 0 ? 'pos' : 'neg'">{{ money(selected.netProfit, { sign: true }) }} {{ currency }}</b></h3>
-      <TradeJournalEditor :position="selected" />
+      <TradeJournalEditor :position="selected" :auto-tags="autoTags.get(selected.id) ?? []" />
     </section>
 
-    <TradeChartTradeList :trades="trades" :currency="currency" :selected-id="selectedId" @select="focusTrade" />
+    <AutoTagLegend :entry-timeframe="autoTfText?.entry" :exit-timeframe="autoTfText?.exit" />
+    <TradeChartTradeList :trades="trades" :currency="currency" :selected-id="selectedId" :auto-tags="autoTags" @select="focusTrade" />
   </div>
 </template>
 

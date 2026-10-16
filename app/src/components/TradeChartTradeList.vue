@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Mt5Position } from '../api/mt5-report-parser'
+import { useTradeJournalStore } from '../stores/trade-journal'
+import type { AutoTag } from '../utils/trade-auto-tags'
 import { money } from '../utils/format'
+import TradeTagChips from './TradeTagChips.vue'
 
 /** Danh sách lệnh của mã đang xem trên chart; bấm một dòng để zoom tới lệnh đó. */
-const props = defineProps<{ trades: Mt5Position[]; currency: string; selectedId?: string }>()
+const props = defineProps<{ trades: Mt5Position[]; currency: string; selectedId?: string; autoTags?: Map<string, AutoTag[]> }>()
+const journal = useTradeJournalStore()
 const emit = defineEmits<{ select: [p: Mt5Position] }>()
 
 const PAGE = 30
@@ -22,7 +26,7 @@ const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice
       <thead>
         <tr>
           <th>Vào lúc</th><th>Chiều</th><th class="r">Lot</th><th class="r">Giá vào</th>
-          <th>Ra lúc</th><th class="r">Giá ra</th><th class="r">Lãi/Lỗ</th>
+          <th>Ra lúc</th><th class="r">Giá ra</th><th class="r">Lãi/Lỗ</th><th>Nhãn</th>
         </tr>
       </thead>
       <tbody>
@@ -35,6 +39,7 @@ const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice
           <td>{{ fmt(p.closeTime) }}</td>
           <td class="r">{{ p.closePrice }}</td>
           <td class="r" :class="p.netProfit >= 0 ? 'pos' : 'neg'">{{ money(p.netProfit, { sign: true }) }} {{ currency }}</td>
+          <td class="tags"><TradeTagChips :auto="autoTags?.get(p.id)" :manual="journal.entries[p.id]?.tags" :note="!!journal.entries[p.id]?.note" /></td>
         </tr>
       </tbody>
     </table>
@@ -55,6 +60,7 @@ tbody tr:hover { background: #f7f8fa; }
 tbody tr.sel { background: #eef4ff; }
 tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .r { text-align: right; }
+td.tags { white-space: normal; min-width: 160px; }
 .empty { color: var(--muted); text-align: center; padding: 20px 0; margin: 0; font-size: 13px; }
 .more { margin: 10px auto 0; display: block; }
 </style>

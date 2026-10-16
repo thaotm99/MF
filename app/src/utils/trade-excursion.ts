@@ -17,13 +17,20 @@ export interface Excursion {
   /** ATR lúc vào lệnh, theo giá — để đổi ATR ra khoảng giá */
   atr: number
   win: boolean
+  /** Điểm xấu nhất (MAE) xảy ra trước điểm tốt nhất (MFE) — giá đi ngược trước rồi mới chạy thuận */
+  adverseFirst: boolean
+  /** Sau khi đóng: giá đi tiếp theo chiều lệnh xa nhất so với giá đóng trong POST_CLOSE_BARS nến, theo ATR (≥ 0) */
+  postCloseAtr: number
 }
+
+/** Số nến sau giờ đóng dùng để xem giá có chạy tiếp không (đánh giá sau, không dùng cho điều kiện vào lệnh) */
+export const POST_CLOSE_BARS = 5
 
 export function evaluateExcursion(p: Mt5Position, c: Candle[], tfSec: number): Excursion {
   const openSec = Date.parse(p.openTime) / 1000
   const closeSec = Date.parse(p.closeTime) / 1000
   const win = p.netProfit >= 0
-  const bad = { ok: false, maeAtr: 0, mfeAtr: 0, realizedAtr: 0, atr: 0, win }
+  const bad = { ok: false, maeAtr: 0, mfeAtr: 0, realizedAtr: 0, atr: 0, win, adverseFirst: false, postCloseAtr: 0 }
   const atrIdx = lastClosedIndex(c, openSec, tfSec)
   const atr = atrIdx > 15 ? atrAt(c, atrIdx) : null
   if (!atr) return bad
@@ -31,12 +38,22 @@ export function evaluateExcursion(p: Mt5Position, c: Candle[], tfSec: number): E
   const dir = p.type === 'buy' ? 1 : -1
   let hi = -Infinity
   let lo = Infinity
+  let hiAt = -1
+  let loAt = -1
   for (let i = Math.max(0, atrIdx); i < c.length && c[i].time < closeSec; i++) {
     if (c[i].time + tfSec <= openSec) continue
-    hi = Math.max(hi, c[i].high)
-    lo = Math.min(lo, c[i].low)
+    if (c[i].high > hi) [hi, hiAt] = [c[i].high, i]
+    if (c[i].low < lo) [lo, loAt] = [c[i].low, i]
   }
   if (hi === -Infinity) return bad
+  // Nến bắt đầu sau giờ đóng (bỏ nến chứa giờ đóng vì có phần trước khi đóng)
+  let post = 0
+  const startAfter = c.findIndex((x) => x.time >= closeSec)
+  if (startAfter >= 0) {
+    for (let i = startAfter; i < Math.min(c.length, startAfter + POST_CLOSE_BARS); i++) {
+      post = Math.max(post, dir > 0 ? c[i].high - p.closePrice : p.closePrice - c[i].low)
+    }
+  }
   // Giá vào / ra luôn nằm trong khoảng đã đi qua
   hi = Math.max(hi, p.openPrice, p.closePrice)
   lo = Math.min(lo, p.openPrice, p.closePrice)
@@ -49,6 +66,9 @@ export function evaluateExcursion(p: Mt5Position, c: Candle[], tfSec: number): E
     realizedAtr: ((p.closePrice - p.openPrice) * dir) / atr,
     atr,
     win,
+    // Cùng một nến thì không biết thứ tự → coi là không
+    adverseFirst: dir > 0 ? loAt < hiAt : hiAt < loAt,
+    postCloseAtr: post / atr,
   }
 }
 

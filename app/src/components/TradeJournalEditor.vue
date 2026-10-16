@@ -2,9 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import type { Mt5Position } from '../api/mt5-report-parser'
 import { useTradeJournalStore } from '../stores/trade-journal'
+import type { AutoTag } from '../utils/trade-auto-tags'
 
 /** Gắn nhãn + ghi chú cho một lệnh (lưu vào app/journal/trade-journal.json) */
-const props = defineProps<{ position: Mt5Position; compact?: boolean }>()
+const props = defineProps<{ position: Mt5Position; compact?: boolean; autoTags?: AutoTag[] }>()
 const journal = useTradeJournalStore()
 onMounted(() => void journal.ensureLoaded())
 
@@ -22,6 +23,10 @@ const savingText = computed(() =>
 
 <template>
   <div class="journal" :class="{ compact }">
+    <ul v-if="autoTags" class="auto" aria-label="Nhãn tự động">
+      <li v-if="!autoTags.length" class="muted">Nhãn tự động: không có (hoặc thiếu nến)</li>
+      <li v-for="t in autoTags" :key="t.id"><span class="chip-auto">{{ t.label }}</span> <span class="why">{{ t.reason }}</span></li>
+    </ul>
     <p v-if="journal.state === 'unavailable'" class="muted">Nhật ký chỉ lưu được khi chạy <code>npm run dev</code> trên máy này.</p>
     <template v-else>
       <div class="tags" role="group" aria-label="Nhãn lệnh">
@@ -46,4 +51,7 @@ textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border);
 .compact textarea { font-size: 12px; }
 .status { font-size: 11px; color: var(--faint); min-height: 14px; }
 .muted { color: var(--muted); font-size: 12px; margin: 0; }
+.auto { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.chip-auto { border: 1px dashed var(--muted); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+.why { color: var(--muted); }
 </style>

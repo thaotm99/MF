@@ -5,7 +5,10 @@ import { money } from '../utils/format'
 import { PATTERN_LABEL, TREND_LABEL, type EvaluationOptions, type TradeEvaluation } from '../utils/trade-evaluation'
 import type { ExitEvaluation } from '../utils/trade-exit-evaluation'
 import type { Excursion } from '../utils/trade-excursion'
-import { UNTAGGED } from '../utils/trade-journal-stats'
+import type { AutoTag } from '../utils/trade-auto-tags'
+import { matchesTagFilter } from '../utils/trade-journal-stats'
+import TradeTagChips from './TradeTagChips.vue'
+import TradeTagFilterSelect from './TradeTagFilterSelect.vue'
 import TradeJournalEditor from './TradeJournalEditor.vue'
 
 /** Danh sách từng lệnh kèm bối cảnh price action lúc vào lệnh */
@@ -13,6 +16,7 @@ const props = defineProps<{
   evals: TradeEvaluation[]
   exits: Map<string, ExitEvaluation>
   excursions: Map<string, Excursion>
+  autoTags: Map<string, AutoTag[]>
   currency: string
   options: EvaluationOptions
 }>()
@@ -23,18 +27,14 @@ onMounted(() => void journal.ensureLoaded())
 const tagsOf = (id: string) => journal.entries[id]?.tags ?? []
 
 const result = ref<'all' | 'win' | 'loss'>('all')
-/** Lọc theo nhãn: '' = tất cả, UNTAGGED = chưa gắn nhãn */
+/** Lọc theo nhãn (của bạn hoặc tự động), xem matchesTagFilter */
 const tag = ref('')
 const PAGE = 40
 const shown = ref(PAGE)
 const rows = computed(() =>
   props.evals
     .filter((e) => result.value === 'all' || (result.value === 'win') === e.win)
-    .filter((e) => {
-      if (!tag.value) return true
-      const tags = tagsOf(e.position.id)
-      return tag.value === UNTAGGED ? !tags.length : tags.includes(tag.value)
-    })
+    .filter((e) => matchesTagFilter(tag.value, tagsOf(e.position.id), props.autoTags.get(e.position.id) ?? []))
     .sort((a, b) => b.position.openTime.localeCompare(a.position.openTime)),
 )
 watch([result, tag, () => props.evals], () => (shown.value = PAGE))
@@ -58,11 +58,7 @@ const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấ
         <button v-for="o in ([['all', 'Tất cả'], ['win', 'Thắng'], ['loss', 'Thua']] as const)" :key="o[0]" type="button"
           role="radio" :aria-checked="result === o[0]" :class="{ on: result === o[0] }" @click="result = o[0]">{{ o[1] }}</button>
       </div>
-      <select v-model="tag" class="select small" aria-label="Lọc theo nhãn">
-        <option value="">Mọi nhãn</option>
-        <option v-for="t in journal.allTags" :key="t" :value="t">{{ t }}</option>
-        <option :value="UNTAGGED">{{ UNTAGGED }}</option>
-      </select>
+      <TradeTagFilterSelect v-model="tag" />
       <span class="muted">{{ rows.length }} lệnh</span>
     </div>
     <div class="wrap">
@@ -100,8 +96,7 @@ const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấ
               <button type="button" class="tag-btn" :aria-expanded="editing === e.position.id"
                 :title="journal.entries[e.position.id]?.note || 'Gắn nhãn / ghi chú'"
                 @click="editing = editing === e.position.id ? null : e.position.id">
-                <span v-for="t in tagsOf(e.position.id)" :key="t" class="chip">{{ t }}</span>
-                <span v-if="journal.entries[e.position.id]?.note" class="chip note">✎</span>
+                <TradeTagChips :auto="autoTags.get(e.position.id)" :manual="tagsOf(e.position.id)" :note="!!journal.entries[e.position.id]?.note" />
                 <span v-if="!journal.entries[e.position.id]" class="add">+ nhãn</span>
               </button>
             </td>
@@ -112,7 +107,7 @@ const zone = (pos?: number) => (pos === undefined ? '—' : pos < 1 / 3 ? 'Thấ
             <td><button type="button" class="link" @click="emit('show', e.position.id)">Xem trên chart</button></td>
           </tr>
           <tr v-if="editing === e.position.id" class="editor-row">
-            <td :colspan="COLS"><TradeJournalEditor :position="e.position" compact /></td>
+            <td :colspan="COLS"><TradeJournalEditor :position="e.position" :auto-tags="autoTags.get(e.position.id) ?? []" compact /></td>
           </tr>
           </template>
         </tbody>
@@ -141,11 +136,8 @@ td.desc { white-space: normal; min-width: 280px; color: var(--muted); }
 .r { text-align: right; }
 .num { font-variant-numeric: tabular-nums; }
 .link { border: 0; background: none; color: var(--accent); padding: 0; font-size: 12px; white-space: nowrap; }
-.select.small { min-height: 30px; padding: 3px 8px; font-size: 12px; }
-.tags-cell { white-space: normal; min-width: 120px; }
+.tags-cell { white-space: normal; min-width: 180px; }
 .tag-btn { border: 0; background: none; padding: 0; text-align: left; display: flex; flex-wrap: wrap; gap: 3px; cursor: pointer; }
-.chip { background: #eef2ff; color: var(--text); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
-.chip.note { background: #f1f3f5; }
 .add { color: var(--faint); font-size: 11px; }
 .editor-row td { background: var(--bg, #fafbfc); padding: 10px 12px; }
 .empty { color: var(--muted); text-align: center; padding: 20px 0; margin: 0; }

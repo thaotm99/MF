@@ -9,7 +9,9 @@ import { DEFAULT_EVALUATION_OPTIONS, evaluateTrade, type TradeEvaluation } from 
 import { EVALUATION_FEATURES, groupByFeature } from '../utils/trade-evaluation-features'
 import { evaluateExit, EXIT_FEATURES, groupExits, type ExitEvaluation } from '../utils/trade-exit-evaluation'
 import { evaluateExcursion } from '../utils/trade-excursion'
-import { groupByTag } from '../utils/trade-journal-stats'
+import { groupByAutoTag, groupByTag } from '../utils/trade-journal-stats'
+import { autoTagsFor } from '../utils/trade-auto-tags'
+import AutoTagLegend from './AutoTagLegend.vue'
 import EvaluationGroupGrid from './EvaluationGroupGrid.vue'
 import ExcursionSection from './ExcursionSection.vue'
 import SetupCombinationSection from './SetupCombinationSection.vue'
@@ -102,8 +104,18 @@ const entryGroups = computed(() =>
 )
 /** Thống kê theo nhãn người dùng gắn (nhật ký) — không cần nến */
 const journal = useTradeJournalStore()
-const tagGroups = computed(() => [{ id: 'tags', title: 'Theo nhãn của bạn', stats: groupByTag(trades.value, journal.entries) }])
 const taggedCount = computed(() => trades.value.filter((p) => journal.entries[p.id]).length)
+/** Nhãn tự động theo đúng khung / tham số đang chọn trên trang này */
+const autoTagsById = computed(() => {
+  const ev = new Map(evals.value.map((e) => [e.position.id, e]))
+  return new Map(trades.value.map((p) => [p.id, autoTagsFor({
+    p, ev: ev.get(p.id), exit: exits.value.get(p.id), exc: excursionById.value.get(p.id), options,
+  })]))
+})
+const tagGroups = computed(() => [
+  { id: 'auto', title: 'Nhãn tự động', stats: groupByAutoTag(trades.value, autoTagsById.value) },
+  ...(taggedCount.value ? [{ id: 'tags', title: 'Theo nhãn của bạn', stats: groupByTag(trades.value, journal.entries) }] : []),
+])
 const exitGroups = computed(() => {
   const items = trades.value.flatMap((p) => (exits.value.get(p.id) ? [{ exit: exits.value.get(p.id)!, p }] : []))
   return EXIT_FEATURES.map((f) => ({ id: f.id, title: f.title, stats: groupExits(items, f) }))
@@ -172,18 +184,19 @@ const exitGroups = computed(() => {
       </p>
     </template>
 
-    <template v-if="taggedCount">
+    <template v-if="okCount">
       <div class="section-head">
-        <h2 class="section">Nhật ký của bạn</h2>
-        <span class="muted">{{ taggedCount }}/{{ trades.length }} lệnh đã gắn nhãn / ghi chú</span>
+        <h2 class="section">Nhãn lệnh</h2>
+        <span class="muted">{{ taggedCount }}/{{ trades.length }} lệnh bạn đã gắn nhãn / ghi chú</span>
       </div>
       <EvaluationGroupGrid :groups="tagGroups" />
-      <p class="foot">Gắn nhãn ở cột "Nhãn" bên dưới hoặc trên trang Chart giá. Lệnh có nhiều nhãn được tính vào mỗi nhãn.</p>
+      <AutoTagLegend :entry-timeframe="timeframe" :exit-timeframe="exitTimeframe" />
+      <p class="foot">Gắn nhãn của bạn ở cột "Nhãn" bên dưới hoặc trên trang Chart giá. Lệnh có nhiều nhãn được tính vào mỗi nhãn.</p>
     </template>
 
     <TradeEvaluationMethod :options="options" :entry-timeframe="timeframe" :exit-timeframe="exitTimeframe" :exit-bars="exitBars" />
 
-    <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :excursions="excursionById" :currency="currency" :options="options"
+    <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :excursions="excursionById" :auto-tags="autoTagsById" :currency="currency" :options="options"
       @show="(id) => emit('show', id, timeframe)" />
   </div>
 </template>

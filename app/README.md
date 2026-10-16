@@ -136,6 +136,25 @@ nến tương lai — để mô tả bối cảnh thị trường lúc vào từ
   (đúng như bot thấy lúc vào lệnh). Giảm độ mạnh swing để bớt trễ.
 - Nhóm dưới 5 lệnh hiện mờ — mẫu quá nhỏ để kết luận.
 
+## Nhãn tự động
+
+Máy tự gán nhãn cho từng lệnh. Nhãn vào lệnh chỉ dùng nến đã đóng trước giờ vào; nhãn thoát lệnh dùng nến trong lúc giữ lệnh (và sau khi đóng với "Thoát sớm"). Hiển thị (viền nét đứt; rê chuột xem lý do, ví dụ "Thoát muộn: trả lại 1.4 ATR"). Không lưu vào nhật ký —
+tính lại theo khung đang chọn (trang Đánh giá lệnh) hoặc M15 vào lệnh / M5 đóng lệnh (trang Chart giá). Ngưỡng ở `src/utils/trade-auto-tags.ts`.
+
+| Nhãn | Rule |
+|---|---|
+| Ngược xu hướng | Cấu trúc swing khung vào lệnh hoặc H1 ngược chiều lệnh |
+| Vào sát cản | Cản phía trước < ngưỡng "sát cản" (mặc định 0.5 ATR) |
+| Đuổi giá | Buy ngay sau khi phá đỉnh swing và ở vùng cao > 2/3 range (Sell: thủng đáy, vùng thấp < 1/3) |
+| Vào sớm | Sau khi vào, giá đi ngược ≥ 1 ATR **trước** rồi mới chạy thuận ≥ 1 ATR |
+| Thoát sớm | Lệnh thắng nhưng trong 5 nến sau khi đóng, giá còn chạy tiếp theo chiều lệnh ≥ 1 ATR so với giá đóng (dùng nến sau giờ đóng — chỉ để đánh giá) |
+| Thoát muộn | Lệnh thắng nhưng đóng cách điểm tốt nhất trong lúc giữ lệnh ≥ 1 ATR (MFE − kết quả) |
+| Thua dù từng có lãi | Lệnh thua có MFE ≥ 1 ATR |
+| Biến động cao | ATR14 lúc vào > 1.25× trung bình 50 nến |
+
+- Trang Đánh giá lệnh có bảng **Nhãn tự động** (thắng/thua theo nhãn); cả hai trang lọc được theo nhãn tự động lẫn nhãn của bạn.
+- "Tin tức", "Đúng setup", "Sai cấu trúc" vẫn tự gán (chưa có lịch tin; là đánh giá chủ quan).
+
 ## Nhật ký lệnh (nhãn & ghi chú)
 
 - Gắn nhãn (Đúng setup, Sai cấu trúc, Vào sớm/muộn, Thoát sớm/muộn, Tin tức, Khác, hoặc nhãn riêng) và ghi chú cho từng lệnh:
@@ -196,7 +215,9 @@ src/utils/candle-resample.ts         Gộp nến sang H1 / H4 / D1
 src/utils/trade-context-features.ts  Khung lớn, ngày hôm trước, số tròn, phiên
 src/utils/setup-combination-finder.ts  Tổ hợp 2–3 điều kiện tốt/xấu nhất, chia tìm / kiểm tra
 src/utils/trade-excursion.ts         MAE / MFE từng lệnh + tóm tắt
-src/utils/trade-journal-stats.ts     Thống kê theo nhãn nhật ký
+src/utils/trade-journal-stats.ts     Thống kê / lọc theo nhãn
+src/utils/trade-auto-tags.ts         Rule nhãn tự động
+src/composables/use-trade-auto-tags.ts  Tính nhãn tự động cho trang Chart giá
 src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng lệnh
 src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Reports)
 src/stores/filters.ts         Bộ lọc dùng chung (tài khoản, kỳ, tháng trên lịch)
@@ -206,5 +227,5 @@ src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangeP
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
                               TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
-                              TradeJournalEditor (nhãn & ghi chú)
+                              TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn)
 ```

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EvaluationOptions } from '../utils/trade-evaluation'
+import { AUTO_TAG_RULES } from '../utils/trade-auto-tags'
 
 /** Giải thích cách tính từng chỉ số đánh giá lệnh (số liệu lấy theo tham số đang chọn trên giao diện). */
 defineProps<{
@@ -127,6 +128,12 @@ defineProps<{
         <li><b>Lệnh thua từng có lãi:</b> % lệnh thua có MFE ≥ 0.5 / 1 / 1.5 ATR → ứng viên dời SL về hoà vốn.</li>
         <li><b>Chốt được:</b> trung vị (kết quả theo giá / MFE) của lệnh thắng — thấp nghĩa là TP / trailing nhả nhiều.</li>
         <li>Nến đầu / cuối có thể gồm một phần trước khi vào / sau khi ra, nên khung càng nhỏ (M1) càng chính xác.</li>
+      </ul>
+
+      <h3>Nhãn tự động</h3>
+      <p>Máy tự gán từ các chỉ số ở trên (đúng khung / tham số đang chọn); không lưu vào nhật ký. Rê chuột lên nhãn để xem lý do của từng lệnh.</p>
+      <ul>
+        <li v-for="r in AUTO_TAG_RULES" :key="r.id"><b>{{ r.label }}:</b> {{ r.description }}</li>
       </ul>
 
       <h3>Nhật ký của bạn</h3>
