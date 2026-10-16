@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { AccountClient } from '../api/client'
 import type { AccountEntry, ApiKeyEntry } from '../api/types'
 import KeyForm from '../components/KeyForm.vue'
+import Mt5ReportsPanel from '../components/Mt5ReportsPanel.vue'
 import { ACCOUNTS_FILE, newId, useSettingsStore } from '../stores/settings'
 import { money } from '../utils/format'
 
@@ -312,6 +313,8 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
       </div>
       <p v-else-if="!accountDraft" class="empty">Chưa có tài khoản nào.</p>
     </section>
+
+    <Mt5ReportsPanel />
 
     <!-- API key -->
     <section class="card block">

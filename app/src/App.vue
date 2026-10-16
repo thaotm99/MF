@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { useReportsStore } from './stores/reports'
 import { useSettingsStore } from './stores/settings'
 
-// Khi mở app: đọc danh sách tài khoản (public/accounts.json) và key từ .env (qua dev server)
+// Khi mở app: đọc danh sách tài khoản (public/accounts.json), key từ .env và báo cáo MT5 (qua dev server)
 const settings = useSettingsStore()
 settings.loadAccountsFile()
 settings.loadEnvKey()
+useReportsStore().load()
 </script>
 
 <template>

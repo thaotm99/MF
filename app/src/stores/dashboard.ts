@@ -3,6 +3,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { AccountClient } from '../api/client'
 import type { AccountDetailsResponse, AccountState, DealHistoryItem } from '../api/types'
 import { notionalOf, type AccountDeal } from '../utils/stats'
+import { useReportsStore } from './reports'
 import { useSettingsStore } from './settings'
 
 interface AccountData {
@@ -20,6 +21,7 @@ interface AccountData {
 /** Dữ liệu tải từ API cho từng tài khoản và các phép tải bổ sung theo khoảng ngày. */
 export const useDashboardStore = defineStore('dashboard', () => {
   const settings = useSettingsStore()
+  const reports = useReportsStore()
   const data = ref<Record<string, AccountData>>({})
   const clients = shallowRef(new Map<string, AccountClient>())
   const loading = computed(() => Object.values(data.value).some((d) => d.loading))
@@ -62,7 +64,33 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   /** Đảm bảo đã có deals trong [from, to) cho một tài khoản; chỉ tải phần còn thiếu. */
+  /** Tài khoản MT5 lấy toàn bộ dữ liệu từ báo cáo HTML, không gọi API. */
+  function fillFromReport(key: string): boolean {
+    const rep = reports.byId(key)
+    if (!rep) return false
+    const r = rep.latest
+    data.value[key] = {
+      details: {
+        account_id: rep.login,
+        account_name: rep.label,
+        create_date: '',
+        settings: { currency: rep.currency, leverage: '', trade_mode: '', account_status: '', execution_mode: '' },
+      },
+      state: {
+        balance: String(r.balance ?? 0),
+        equity: String(r.equity ?? r.balance ?? 0),
+        used_margin: '0',
+      },
+      coverage: { from: -Infinity, to: Infinity },
+      deals: new Map(rep.deals.map((d) => [d.deal.deal_id, d])),
+      error: null,
+      loading: false,
+    }
+    return true
+  }
+
   async function ensureAccount(key: string, from: number, to: number, refreshState: boolean) {
+    if (fillFromReport(key)) return
     const d = entry(key)
     d.loading = true
     d.error = null

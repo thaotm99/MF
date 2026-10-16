@@ -58,6 +58,24 @@ Nút "Kiểm tra" gọi `account` và `snapshot` để xác nhận key truy cậ
 > ⚠️ Key được lưu trong `localStorage` và ký request ngay trên trình duyệt. Chỉ dùng trên máy cá nhân,
 > nên tạo key chỉ có quyền đọc và giới hạn IP. File `accounts.json` chỉ chứa ID và tên, **không** chứa key.
 
+## Tài khoản MT4/MT5: đọc báo cáo HTML
+
+API Exness chỉ hỗ trợ tài khoản chạy trên **Exness Terminal / Exness Trade**. Với tài khoản MT5:
+
+1. Trong MT5: **Toolbox → History** → chuột phải → **Report → HTML**. Nên để giao diện MT5 bằng **tiếng Anh**.
+2. Lưu file vào `app/reports/`. Thư mục này nằm trong `.gitignore`.
+3. Mở **Quản lý tài khoản → Báo cáo MT5 → Tải lại báo cáo**.
+
+- Đọc phần đầu báo cáo (Account, Date), bảng **Deals** và phần tổng kết (Balance, Equity, Floating P/L).
+- Nhiều file cùng một tài khoản được gộp, deal trùng ticket chỉ tính một lần.
+- Tên hiển thị lấy từ `accounts.json` nếu trùng số tài khoản, ví dụ "MF_01 (MT5)". Khi đó dashboard dùng
+  báo cáo thay cho API.
+- Phí giao dịch = Commission + Fee + Swap.
+- Khối lượng giao dịch là **ước lượng**, vì báo cáo không có contract size: vàng 100 oz, bạc 5 000 oz,
+  cặp tiền 100 000. Các mã khác không quy đổi được.
+- Số liệu chỉ mới đến lúc xuất báo cáo; xuất file mới để cập nhật.
+- Chỉ đọc được khi chạy `npm run dev`.
+
 ## Chế độ kết nối
 
 - **Qua proxy dev** (mặc định): Vite dev server chuyển tiếp request qua `/__exness/<host>/...`
@@ -93,5 +111,8 @@ src/api/client.ts      Client theo tài khoản: host, limits, phân trang
 src/views/             DashboardView (Tổng quan), AccountsView (Quản lý tài khoản)
 src/stores/            settings (key, tài khoản, file JSON; lưu localStorage) + dashboard (cache dữ liệu)
 src/utils/stats.ts     Tổng hợp số liệu, PnL theo ngày
-src/components/        SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, KeyForm
+src/api/mt5-report-parser.ts  Đọc báo cáo HTML của MT5
+src/components/        SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, KeyForm, Mt5ReportsPanel
+exness-dev-proxy.ts    Proxy + ký request bằng key .env (dev server)
+mt5-reports-dev-endpoint.ts  Liệt kê / đọc file trong reports/ (dev server)
 ```

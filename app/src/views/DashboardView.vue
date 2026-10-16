@@ -5,11 +5,19 @@ import DateRangePicker, { type DateRange } from '../components/DateRangePicker.v
 import PnlCalendar from '../components/PnlCalendar.vue'
 import SummaryPanel from '../components/SummaryPanel.vue'
 import { useDashboardStore } from '../stores/dashboard'
+import { useReportsStore } from '../stores/reports'
 import { useSettingsStore } from '../stores/settings'
 import { dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
 
 const settings = useSettingsStore()
 const dash = useDashboardStore()
+const reports = useReportsStore()
+
+/** Tài khoản MT5 (từ báo cáo HTML) + tài khoản API; trùng số tài khoản thì dùng báo cáo. */
+const dashboardAccounts = computed(() => {
+  const mt5 = new Set(reports.entries.map((e) => e.accountId))
+  return [...reports.entries, ...settings.credentials.filter((c) => !mt5.has(c.accountId))]
+})
 
 
 const selected = ref<'all' | string>('all')
@@ -21,7 +29,7 @@ const calYear = ref(ty)
 const calMonth = ref(tm - 1)
 
 const keys = computed(() =>
-  selected.value === 'all' ? settings.credentials.map((a) => a.id) : [selected.value],
+  selected.value === 'all' ? dashboardAccounts.value.map((a) => a.id) : [selected.value],
 )
 const today = computed(() => dayKey(now.value, settings.timeZone))
 const daysAgo = (n: number) => dayKey(Date.now() - n * 86_400_000, settings.timeZone)
@@ -56,7 +64,7 @@ const currency = computed(() => [...currencies.value][0] ?? 'USD')
 const errors = computed(() =>
   accountRows.value
     .filter((r) => r.d?.error)
-    .map((r) => ({ label: settings.credentials.find((a) => a.id === r.key)?.label ?? r.key, error: r.d!.error! })),
+    .map((r) => ({ label: dashboardAccounts.value.find((a) => a.id === r.key)?.label ?? r.key, error: r.d!.error! })),
 )
 const clamped = computed(() => {
   const t = Math.max(0, ...accountRows.value.map((r) => r.d?.oldestAllowed ?? 0))
@@ -76,9 +84,11 @@ function refresh() {
 }
 
 watch([keys, range, calYear, calMonth], () => load())
+// Đọc lại báo cáo MT5 thì cập nhật số liệu
+watch(() => reports.accounts, () => load())
 watch(() => settings.mode, refresh)
 watch(
-  () => settings.credentials.map((a) => a.id),
+  () => dashboardAccounts.value.map((a) => a.id),
   (ids) => {
     if (selected.value !== 'all' && !ids.includes(selected.value)) selected.value = 'all'
   },
@@ -96,10 +106,10 @@ function onCalendarChange(y: number, m: number) {
   <main class="page">
     <header class="top">
       <h1>Tổng quan</h1>
-      <RouterLink class="btn" to="/accounts">Quản lý tài khoản ({{ settings.credentials.length }})</RouterLink>
+      <RouterLink class="btn" to="/accounts">Quản lý tài khoản ({{ dashboardAccounts.length }})</RouterLink>
     </header>
 
-    <section v-if="!settings.credentials.length" class="card empty">
+    <section v-if="!dashboardAccounts.length" class="card empty">
       <p>Chưa có tài khoản nào. Thêm Account ID, API Key và Secret Key từ Key Management của Exness để bắt đầu.</p>
       <RouterLink class="btn btn-primary" to="/accounts">+ Thêm tài khoản</RouterLink>
     </section>
@@ -111,7 +121,7 @@ function onCalendarChange(y: number, m: number) {
             <span>Tài khoản</span>
             <select v-model="selected" class="select account">
               <option value="all">Tất cả tài khoản</option>
-              <option v-for="a in settings.credentials" :key="a.id" :value="a.id">{{ a.label }} (#{{ a.accountId }})</option>
+              <option v-for="a in dashboardAccounts" :key="a.id" :value="a.id">{{ a.label }} (#{{ a.accountId }})</option>
             </select>
           </label>
           <div class="field">

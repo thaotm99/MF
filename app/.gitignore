@@ -17,6 +17,10 @@ dist-ssr
 .env.*
 !.env.example
 
+# Báo cáo MT5 (số tài khoản, lịch sử giao dịch) — không commit
+reports/*
+!reports/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -21,5 +21,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "exness-dev-proxy.ts"]
+  "include": ["vite.config.ts", "exness-dev-proxy.ts", "mt5-reports-dev-endpoint.ts"]
 }

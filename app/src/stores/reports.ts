@@ -1,0 +1,127 @@
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import { decodeReport, estimateContract, parseMt5Report, type Mt5Report } from '../api/mt5-report-parser'
+import type { AccountEntry, Deal } from '../api/types'
+import type { AccountDeal } from '../utils/stats'
+import { useSettingsStore } from './settings'
+
+export interface ReportFile {
+  name: string
+  size: number
+  mtime: string
+  /** Kết quả đọc file; null khi lỗi */
+  report: Mt5Report | null
+  error?: string
+}
+
+/** Tài khoản MT5 gộp từ một hoặc nhiều file báo cáo cùng số tài khoản. */
+export interface Mt5Account {
+  id: string
+  login: string
+  label: string
+  currency: string
+  server?: string
+  files: string[]
+  /** Báo cáo mới nhất — dùng cho balance/equity */
+  latest: Mt5Report
+  deals: AccountDeal[]
+  firstDealTime?: string
+  lastDealTime?: string
+}
+
+export const REPORT_ACCOUNT_PREFIX = 'mt5:'
+
+function notional(d: Deal, currency: string): number | null {
+  if ((d.type !== 'open' && d.type !== 'close') || !d.instrument) return null
+  const c = estimateContract(d.instrument)
+  if (!c) return null
+  const units = Number(d.volume ?? 0) * c.size
+  if (c.quote === currency) return units * Number(d.price ?? 0)
+  if (c.base === currency) return units
+  return null
+}
+
+/** Báo cáo MT5 đặt trong app/reports/, đọc qua dev server. */
+export const useReportsStore = defineStore('reports', () => {
+  const settings = useSettingsStore()
+  const files = ref<ReportFile[]>([])
+  const dir = ref('reports')
+  const state = ref<'idle' | 'loading' | 'ok' | 'unavailable'>('idle')
+
+  async function load() {
+    state.value = 'loading'
+    try {
+      const res = await fetch('/__mt5-reports/list', { cache: 'no-store' })
+      if (!(res.headers.get('content-type') ?? '').includes('json')) {
+        state.value = 'unavailable' // không chạy npm run dev
+        files.value = []
+        return
+      }
+      const list = (await res.json()) as { dir: string; files: { name: string; size: number; mtime: string }[] }
+      dir.value = list.dir
+      files.value = await Promise.all(
+        list.files.map(async (f): Promise<ReportFile> => {
+          try {
+            const r = await fetch(`/__mt5-reports/file/${encodeURIComponent(f.name)}`, { cache: 'no-store' })
+            if (!r.ok) throw new Error(`HTTP ${r.status}`)
+            return { ...f, report: parseMt5Report(decodeReport(await r.arrayBuffer())) }
+          } catch (e) {
+            return { ...f, report: null, error: e instanceof Error ? e.message : String(e) }
+          }
+        }),
+      )
+      state.value = 'ok'
+    } catch {
+      state.value = 'unavailable'
+      files.value = []
+    }
+  }
+
+  /** Gộp các file cùng số tài khoản; deal trùng ticket chỉ tính một lần. */
+  const accounts = computed<Mt5Account[]>(() => {
+    const byLogin = new Map<string, ReportFile[]>()
+    for (const f of files.value) {
+      if (!f.report) continue
+      const list = byLogin.get(f.report.login) ?? []
+      list.push(f)
+      byLogin.set(f.report.login, list)
+    }
+    return [...byLogin.entries()].map(([login, list]) => {
+      const sorted = [...list].sort((a, b) =>
+        (a.report!.reportTime ?? a.mtime).localeCompare(b.report!.reportTime ?? b.mtime),
+      )
+      const latest = sorted[sorted.length - 1].report!
+      const id = `${REPORT_ACCOUNT_PREFIX}${login}`
+      const map = new Map<string, AccountDeal>()
+      for (const f of sorted) {
+        for (const deal of f.report!.deals) {
+          map.set(deal.deal_id, { accountKey: id, accountId: login, currency: latest.currency, deal, notional: notional(deal, latest.currency) })
+        }
+      }
+      const deals = [...map.values()]
+      const times = deals.map((d) => d.deal.create_time).sort()
+      return {
+        id,
+        login,
+        // Ưu tiên tên trong accounts.json / tài khoản đã thêm (ví dụ MF_01)
+        label: `${settings.allAccounts.find((a) => a.accountId === login)?.label ?? `#${login}`} (MT5)`,
+        currency: latest.currency,
+        server: latest.server,
+        files: sorted.map((f) => f.name),
+        latest,
+        deals,
+        firstDealTime: times[0],
+        lastDealTime: times[times.length - 1],
+      }
+    })
+  })
+
+  /** Dạng AccountEntry để hiển thị chung với tài khoản API trong ô chọn. */
+  const entries = computed<AccountEntry[]>(() =>
+    accounts.value.map((a) => ({ id: a.id, label: a.label, accountId: a.login, keyId: '', resolveAccessPoint: false })),
+  )
+
+  const byId = (id: string) => accounts.value.find((a) => a.id === id)
+
+  return { files, dir, state, accounts, entries, load, byId }
+})
