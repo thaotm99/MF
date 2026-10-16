@@ -26,8 +26,18 @@ export interface Mt5Account {
   deals: AccountDeal[]
   /** Vị thế đã đóng (bảng Positions), gộp theo id — dùng cho tab Biểu đồ */
   positions: Mt5Position[]
+  /** Số dư trước deal sớm nhất (lấy từ file có deal sớm nhất) */
+  openingBalance: number
   firstDealTime?: string
   lastDealTime?: string
+}
+
+/** Số dư đầu của tài khoản = openingBalance của file có deal sớm nhất */
+function openingOf(reports: Mt5Report[]): number {
+  const first = [...reports]
+    .filter((r) => r.deals.length)
+    .sort((a, b) => a.deals[0].create_time.localeCompare(b.deals[0].create_time))[0]
+  return first?.openingBalance ?? 0
 }
 
 export const REPORT_ACCOUNT_PREFIX = 'mt5:'
@@ -107,6 +117,7 @@ export const useReportsStore = defineStore('reports', () => {
         latest,
         deals,
         positions: [...posMap.values()],
+        openingBalance: openingOf(sorted.map((f) => f.report!)),
         firstDealTime: times[0],
         lastDealTime: times[times.length - 1],
       }

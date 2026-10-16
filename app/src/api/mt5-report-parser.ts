@@ -44,6 +44,8 @@ export interface Mt5Report {
   balance?: number
   equity?: number
   floatingPnl?: number
+  /** Số dư trước deal đầu tiên của file */
+  openingBalance?: number
   deals: Deal[]
   positions: Mt5Position[]
 }
@@ -132,10 +134,12 @@ export function parseMt5Report(html: string): Mt5Report {
   const C = {
     time: col('time'), deal: col('deal'), symbol: col('symbol'), type: col('type'), direction: col('direction'),
     volume: col('volume'), price: col('price'), order: col('order'), commission: col('commission'),
-    fee: col('fee'), swap: col('swap'), profit: col('profit'),
+    fee: col('fee'), swap: col('swap'), profit: col('profit'), balance: col('balance'),
   }
 
   const deals: Deal[] = []
+  /** Số dư trước deal đầu tiên trong file (từ cột Balance) — để tính drawdown % khi file không có lệnh nạp ban đầu */
+  let openingBalance: number | undefined
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const c = rows[i]
     const time = toIso(c[C.time] ?? '')
@@ -151,6 +155,9 @@ export function parseMt5Report(html: string): Mt5Report {
     const profit = num(c[C.profit])
     const commission = num(c[C.commission]) + (C.fee >= 0 ? num(c[C.fee]) : 0)
     const swap = C.swap >= 0 ? num(c[C.swap]) : 0
+    if (openingBalance === undefined && C.balance >= 0 && c[C.balance]) {
+      openingBalance = num(c[C.balance]) - (profit + commission + swap)
+    }
 
     if (TRADE_TYPES.has(type)) {
       deals.push({
@@ -195,6 +202,7 @@ export function parseMt5Report(html: string): Mt5Report {
     balance: pick('Balance:'),
     equity: pick('Equity:'),
     floatingPnl: pick('Floating P/L:'),
+    openingBalance,
     deals,
     positions,
   }

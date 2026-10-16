@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onActivated, ref, watch } from 'vue'
+import AccountComparisonTable from '../components/AccountComparisonTable.vue'
 import ClosedDeals from '../components/ClosedDeals.vue'
 import DateRangePicker, { type DateRange } from '../components/DateRangePicker.vue'
 import PnlBreakdownCharts from '../components/PnlBreakdownCharts.vue'
@@ -10,6 +11,7 @@ import { useReportsStore } from '../stores/reports'
 import { useSettingsStore } from '../stores/settings'
 import { conversionRate, convertDeal, dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
 import { dayExtremes, maxLosingStreak } from '../utils/trading-extremes-stats'
+import { compareAccount } from '../utils/account-comparison-stats'
 
 const settings = useSettingsStore()
 // Thư viện chart nến (~150 KB) chỉ tải khi mở tab "Chart giá"
@@ -18,7 +20,7 @@ const reports = useReportsStore()
 
 /** Mặc định: tài khoản đầu tiên (chọn "Tất cả tài khoản" để cộng gộp) */
 const selected = ref<'all' | string>('')
-const tab = ref<'daily' | 'closed' | 'chart' | 'price'>('daily')
+const tab = ref<'daily' | 'closed' | 'chart' | 'price' | 'compare'>('daily')
 const now = ref(Date.now())
 
 const [ty, tm] = dayKey(Date.now(), settings.timeZone).split('-').map(Number)
@@ -46,11 +48,29 @@ const rangeTo = computed(() => Math.min(dayStart(range.value.end, 1), now.value 
 const display = computed(() => settings.displayCurrency)
 const rateOf = (accountCurrency: string) => conversionRate(accountCurrency, display.value)
 
-const deals = computed(() =>
-  accounts.value.flatMap((a) => {
-    const f = rateOf(a.currency)
-    return f === null ? a.deals : a.deals.map((d) => convertDeal(d, f, display.value))
-  }),
+/** Deal của một tài khoản, đã quy đổi sang tiền tệ hiển thị (nếu quy đổi được) */
+const convertedDeals = (a: (typeof reports.accounts)[number]) => {
+  const f = rateOf(a.currency)
+  return f === null ? a.deals : a.deals.map((d) => convertDeal(d, f, display.value))
+}
+const deals = computed(() => accounts.value.flatMap(convertedDeals))
+
+/** Bảng so sánh: mọi tài khoản (không theo ô chọn tài khoản), trong kỳ đã chọn */
+const comparison = computed(() =>
+  reports.accounts.map((a) =>
+    compareAccount(
+      {
+        id: a.id,
+        label: a.label,
+        login: a.login,
+        equity: (a.latest.equity ?? a.latest.balance ?? 0) * (rateOf(a.currency) ?? 1),
+        openingBalance: a.openingBalance * (rateOf(a.currency) ?? 1),
+      },
+      convertedDeals(a),
+      rangeFrom.value,
+      rangeTo.value,
+    ),
+  ),
 )
 /** Vị thế đóng trong kỳ, đã quy đổi tiền tệ — cho tab Biểu đồ */
 const positions = computed(() =>
@@ -172,6 +192,7 @@ function onCalendarChange(y: number, m: number) {
           <button :class="{ active: tab === 'price' }" @click="tab = 'price'">Chart giá</button>
           <button :class="{ active: tab === 'chart' }" @click="tab = 'chart'">Biểu đồ</button>
           <button :class="{ active: tab === 'closed' }" @click="tab = 'closed'">Các giao dịch đã đóng</button>
+          <button :class="{ active: tab === 'compare' }" @click="tab = 'compare'">So sánh tài khoản</button>
         </nav>
         <div class="tab-body">
           <PnlCalendar
@@ -193,7 +214,8 @@ function onCalendarChange(y: number, m: number) {
             :show-account="accounts.length > 1"
           />
           <PnlBreakdownCharts v-else-if="tab === 'chart'" :positions="positions" :currency="currency" :time-zone="settings.timeZone" />
-          <TradePriceChart v-else :positions="positions" :currency="currency" :from="rangeFrom" :to="rangeTo" />
+          <TradePriceChart v-else-if="tab === 'price'" :positions="positions" :currency="currency" :from="rangeFrom" :to="rangeTo" />
+          <AccountComparisonTable v-else :rows="comparison" :currency="display" />
         </div>
       </section>
     </template>

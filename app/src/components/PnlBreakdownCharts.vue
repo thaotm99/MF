@@ -2,7 +2,9 @@
 import { computed } from 'vue'
 import type { Mt5Position } from '../api/mt5-report-parser'
 import type { TimeZoneMode } from '../stores/settings'
+import { atrDimension, byKeyNumber, er5Dimension, hourDimension, type PositionDimension } from '../utils/position-dimension-bins'
 import PnlBarChart, { type BarItem } from './PnlBarChart.vue'
+import PnlHeatmap from './PnlHeatmap.vue'
 
 /** Vị thế đã lọc theo kỳ và đã quy đổi netProfit sang tiền tệ hiển thị. */
 const props = defineProps<{ positions: Mt5Position[]; currency: string; timeZone: TimeZoneMode }>()
@@ -30,40 +32,27 @@ function groupOf(
   return [...map.values()].sort((a, b) => order(a.key, b.key))
 }
 
-const hourOf = (iso: string) => {
-  const d = new Date(iso)
-  return props.timeZone === 'utc' ? d.getUTCHours() : d.getHours()
-}
 /** Bỏ hậu tố loại tài khoản của Exness: XAUUSDc → XAUUSD */
 const baseSymbol = (s: string) => s.replace(/[a-z.#_]+$/, '').toUpperCase()
 
-const byHour = computed(() => group((p) => String(hourOf(p.openTime)), (k) => `${k}:00`, (a, b) => Number(a) - Number(b)))
+const hourDim = computed(() => hourDimension(props.timeZone))
+const byHour = computed(() => group((p) => hourDim.value.keyOf(p)!, hourDim.value.labelOf, byKeyNumber))
 const bySide = computed(() =>
   group((p) => p.type, (k) => (k === 'buy' ? 'Buy' : 'Sell'), (a, b) => (a === b ? 0 : a === 'sell' ? -1 : 1)),
 )
 const byVolume = computed(() => group((p) => String(p.volume), (k) => k, (a, b) => Number(a) - Number(b)))
 const bySymbol = computed(() => group((p) => baseSymbol(p.symbol), (k) => k, (a, b) => a.localeCompare(b)))
 
-/**
- * Chia giá trị chỉ báo thành khoảng [lo, lo + step); giá trị ≥ cap gộp vào nhóm "≥ cap".
- * Khoá là cận dưới của khoảng để sắp xếp đúng thứ tự số.
- */
-function byIndicator(valueOf: (p: Mt5Position) => number | undefined, step: number, cap: number, digits: number) {
-  const withValue = props.positions.filter((p) => valueOf(p) !== undefined)
-  const binOf = (v: number) => (v >= cap ? cap : Math.floor(v / step + 1e-9) * step)
-  const items = groupOf(
-    withValue,
-    (p) => binOf(valueOf(p)!).toFixed(digits),
-    (k) => (Number(k) >= cap ? `≥ ${k}` : `${k}–${(Number(k) + step).toFixed(digits)}`),
-    (a, b) => Number(a) - Number(b),
-  )
+/** Biểu đồ cột theo ATR / ER5; vị thế không có giá trị trong comment thì bỏ qua và ghi chú số lượng */
+function byIndicator(dim: PositionDimension) {
+  const withValue = props.positions.filter((p) => dim.keyOf(p) !== undefined)
+  const items = groupOf(withValue, (p) => dim.keyOf(p)!, dim.labelOf, byKeyNumber)
   const missing = props.positions.length - withValue.length
   return { items, note: missing ? `${missing} lệnh không có giá trị trong comment (bỏ qua)` : undefined }
 }
 
-// ATR lúc vào lệnh: bước 0.5, gộp từ 5 trở lên. ER5 (0–1): bước 0.1.
-const byAtr = computed(() => byIndicator((p) => p.atr, 0.5, 5, 1))
-const byEr5 = computed(() => byIndicator((p) => p.er5, 0.1, 1, 1))
+const byAtr = computed(() => byIndicator(atrDimension))
+const byEr5 = computed(() => byIndicator(er5Dimension))
 </script>
 
 <template>
@@ -75,6 +64,7 @@ const byEr5 = computed(() => byIndicator((p) => p.er5, 0.1, 1, 1))
     <PnlBarChart title="ATR lúc vào lệnh" :items="byAtr.items" :note="byAtr.note" :currency="currency" />
     <PnlBarChart title="ER5 lúc vào lệnh" :items="byEr5.items" :note="byEr5.note" :currency="currency" />
   </div>
+  <PnlHeatmap :positions="positions" :currency="currency" :time-zone="timeZone" />
   <p class="foot">
     Lãi/lỗ ròng (gồm commission, swap) của các vị thế đóng trong kỳ đã chọn, theo bảng Positions của báo cáo.
     ATR / ER5 đọc từ comment lệnh của EA ("A:", "er5:"; bản cũ "ATR :", "er:").

@@ -78,6 +78,9 @@ Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên fil
 | Equity                 | `Equity:` trong phần tổng kết của báo cáo mới nhất                            |
 | Lịch PnL hàng ngày     | Nhóm deal theo ngày (giờ server MT5 UTC+0 hoặc giờ máy)                      |
 | Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã / ATR / ER5 |
+| Bản đồ nhiệt           | Tab Biểu đồ: Giờ × ATR / Giờ × ER5 / ATR × ER5; ô = lãi/lỗ ròng (hoặc tỷ lệ thắng) và số lệnh, ô < 3 lệnh làm mờ |
+| So sánh tài khoản      | Tab riêng: lợi nhuận ròng, lệnh, tỷ lệ thắng, Profit Factor, lãi/lỗ TB, kỳ vọng/lệnh, chuỗi thua, max drawdown, equity; bấm tiêu đề để sắp xếp |
+| Max drawdown           | Sụt giảm lớn nhất của balance so với đỉnh trong kỳ; nạp/rút dịch đỉnh theo (không tính là sụt giảm) — khớp "Balance Drawdown Maximal" của MT5 |
 | ATR, ER5 lúc vào lệnh  | Đọc từ comment lệnh của EA: `A:` (cũ `ATR :`), `er5:` (cũ `er:`, ER trên M5). ATR chia bước 0.5 (gộp ≥ 5), ER5 bước 0.1. Lệnh không có giá trị hoặc comment bị MT5 cắt (31 ký tự) thì bỏ qua |
 
 - **Tiền tệ hiển thị:** nút **USD | USC** ở trang **Báo cáo MT5 → Cài đặt**, mặc định USD, được nhớ trong trình duyệt.
@@ -102,6 +105,8 @@ src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
+src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max drawdown
+src/utils/position-dimension-bins.ts  Chia nhóm giờ / ATR / ER5 (biểu đồ cột + bản đồ nhiệt)
 src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
