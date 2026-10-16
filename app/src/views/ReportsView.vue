@@ -28,8 +28,8 @@ const settings = useSettingsStore()
 </template>
 
 <style scoped>
-.page { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
-h1 { font-size: 32px; font-weight: 600; margin: 0 0 8px; }
+.page { max-width: 1240px; margin: 0 auto; padding: 24px 24px 48px; }
+h1 { font-size: 26px; font-weight: 600; margin: 0 0 8px; }
 h2 { font-size: 17px; margin: 0; }
 h3 { font-size: 14px; margin: 14px 0 8px; }
 .block { padding: 20px 24px; margin-top: 16px; }

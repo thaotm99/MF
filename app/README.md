@@ -12,6 +12,21 @@ npm run dev      # http://localhost:5173
 
 App chỉ đọc được báo cáo khi chạy `npm run dev`.
 
+## Các trang (sidebar)
+
+| Trang | Đường dẫn | Nội dung |
+|---|---|---|
+| Tổng quan | `/` | Số liệu tổng của kỳ, ngày lãi/lỗ lớn nhất, chuỗi thua, lịch PnL hàng ngày |
+| Chart giá | `/chart` | Nến + điểm vào/ra lệnh, cấu trúc HH/HL/LH/LL (`/chart?trade=<id>&tf=M15` zoom tới lệnh) |
+| Đánh giá lệnh | `/evaluation` | Bối cảnh price action từng lệnh + thắng/thua theo yếu tố |
+| Biểu đồ | `/breakdown` | Lãi/lỗ theo giờ, chiều, khối lượng, mã, ATR, ER5 + bản đồ nhiệt |
+| Lệnh đã đóng | `/trades` | Danh sách deal đóng |
+| So sánh tài khoản | `/compare` | Bảng chỉ số mọi tài khoản |
+| Báo cáo MT5 | `/reports` | File báo cáo, tiền tệ hiển thị, múi giờ |
+
+Bộ lọc **tài khoản** và **thời gian** dùng chung cho mọi trang và được giữ khi chuyển trang. Mỗi lần chuyển trang,
+app đọc lại thư mục `reports/`.
+
 ## Public ra internet (Cloudflare Tunnel)
 
 1. Cài một lần: `brew install cloudflared`
@@ -131,7 +146,10 @@ src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max dra
 src/utils/position-dimension-bins.ts  Chia nhóm giờ / ATR / ER5 (biểu đồ cột + bản đồ nhiệt)
 src/utils/price-action-features.ts   ATR, EMA, swing fractal, cấu trúc, mẫu nến (không nhìn trước)
 src/utils/trade-evaluation.ts        Đánh giá bối cảnh từng lệnh + thống kê theo yếu tố
-src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
+src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Reports)
+src/stores/filters.ts         Bộ lọc dùng chung (tài khoản, kỳ, tháng trên lịch)
+src/composables/use-dashboard-data.ts  Dữ liệu đã lọc + quy đổi tiền tệ, dùng chung cho mọi trang
+src/components/AnalysisPage.vue  Khung trang: tiêu đề + thanh lọc
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts)
