@@ -28,7 +28,7 @@ const winRate = computed(() =>
 <template>
   <div class="grid" :class="{ dim: loading }">
     <div class="col">
-      <div class="label">Lợi nhuận ròng <i class="hint" title="Lãi + lỗ của các lệnh đã đóng, trừ phí giao dịch">i</i></div>
+      <div class="label">Lợi nhuận ròng</div>
       <div class="big" :class="signClass(summary.netProfit)">
         {{ splitMoney(summary.netProfit).int }}<small>{{ splitMoney(summary.netProfit).frac }}</small> {{ currency }}
       </div>
@@ -36,7 +36,6 @@ const winRate = computed(() =>
         <li>
           Lợi nhuận hôm nay ({{ todayLabel }})
           <b :class="todayPnl > 0 ? 'pos' : todayPnl < 0 ? 'neg' : ''">{{ money(todayPnl, { sign: true }) }} {{ currency }}</b>
-          <i class="hint" :title="`Lãi/lỗ ròng của ${todayTrades} lệnh đóng hôm nay, không phụ thuộc kỳ đã chọn`">i</i>
         </li>
         <li>Lãi <b :class="signClass(summary.profit)">{{ money(summary.profit, { sign: true }) }} {{ currency }}</b></li>
         <li>Lỗ <b :class="signClass(summary.loss)">{{ money(summary.loss) }} {{ currency }}</b></li>
@@ -44,12 +43,11 @@ const winRate = computed(() =>
     </div>
 
     <div class="col">
-      <div class="label">Lệnh đã đóng <i class="hint" title="Số deal đóng vị thế trong kỳ">i</i></div>
+      <div class="label">Lệnh đã đóng</div>
       <div class="big">{{ int(summary.closedOrders) }}</div>
       <ul>
         <li>
           Tỷ lệ chiến thắng <b>{{ winRate.toFixed(1) }}%</b>
-          <i class="hint" title="Lệnh có lãi / lệnh đã đóng trong kỳ (lệnh hoà vốn tính là có lãi, như MT5)">i</i>
         </li>
         <li>Có lãi <b>{{ int(summary.profitable) }}</b></li>
         <li>Thua lỗ <b>{{ int(summary.unprofitable) }}</b></li>
@@ -59,7 +57,6 @@ const winRate = computed(() =>
     <div class="col">
       <div class="label">
         Khối lượng giao dịch
-        <i class="hint" title="Tổng giá trị danh nghĩa (lot × contract size × giá) của deal mở và đóng">i</i>
       </div>
       <div class="big">
         {{ splitMoney(summary.volume).int }}<small>{{ splitMoney(summary.volume).frac }}</small> {{ currency }}
@@ -73,7 +70,7 @@ const winRate = computed(() =>
     </div>
 
     <div class="col">
-      <div class="label">Equity <i class="hint" title="Balance + lãi/lỗ chưa thực hiện, từ snapshot hiện tại">i</i></div>
+      <div class="label">Equity</div>
       <div class="big">{{ splitMoney(equity).int }}<small>{{ splitMoney(equity).frac }}</small> {{ currency }}</div>
       <ul>
         <li>Hiện tại <b>{{ money(equity) }} {{ currency }}</b></li>

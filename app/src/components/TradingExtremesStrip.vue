@@ -40,7 +40,6 @@ const fmtShort = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)
     <div class="item">
       <div class="label">
         Thua liên tiếp nhiều nhất
-        <i class="hint" title="Chuỗi lệnh lỗ (profit < 0) liên tiếp dài nhất trong kỳ, xếp theo giờ đóng lệnh; lệnh hoà vốn ngắt chuỗi">i</i>
       </div>
       <template v-if="streak.count">
         <div class="value">{{ streak.count }} lệnh</div>
