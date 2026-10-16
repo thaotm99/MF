@@ -7,6 +7,7 @@ import PnlBreakdownCharts from '../components/PnlBreakdownCharts.vue'
 import PnlCalendar from '../components/PnlCalendar.vue'
 import SummaryPanel from '../components/SummaryPanel.vue'
 import TradingExtremesStrip from '../components/TradingExtremesStrip.vue'
+import type { CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import { useReportsStore } from '../stores/reports'
 import { useSettingsStore } from '../stores/settings'
 import { conversionRate, convertDeal, dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
@@ -16,11 +17,23 @@ import { compareAccount } from '../utils/account-comparison-stats'
 const settings = useSettingsStore()
 // Thư viện chart nến (~150 KB) chỉ tải khi mở tab "Chart giá"
 const TradePriceChart = defineAsyncComponent(() => import('../components/TradePriceChart.vue'))
+const TradeEvaluationTab = defineAsyncComponent(() => import('../components/TradeEvaluationTab.vue'))
 const reports = useReportsStore()
 
 /** Mặc định: tài khoản đầu tiên (chọn "Tất cả tài khoản" để cộng gộp) */
 const selected = ref<'all' | string>('')
-const tab = ref<'daily' | 'closed' | 'chart' | 'price' | 'compare'>('daily')
+const tab = ref<'daily' | 'closed' | 'chart' | 'price' | 'eval' | 'compare'>('daily')
+/** "Xem trên chart" từ tab Đánh giá lệnh: mở Chart giá và zoom tới lệnh */
+const focusId = ref<string | undefined>()
+const focusTf = ref<CandleTimeframe | undefined>()
+function showOnChart(id: string, tf: CandleTimeframe) {
+  focusId.value = id
+  focusTf.value = tf
+  tab.value = 'price'
+}
+watch(tab, (t) => {
+  if (t !== 'price') focusId.value = undefined
+})
 const now = ref(Date.now())
 
 const [ty, tm] = dayKey(Date.now(), settings.timeZone).split('-').map(Number)
@@ -190,6 +203,7 @@ function onCalendarChange(y: number, m: number) {
         <nav class="tabs">
           <button :class="{ active: tab === 'daily' }" @click="tab = 'daily'">PnL hàng ngày</button>
           <button :class="{ active: tab === 'price' }" @click="tab = 'price'">Chart giá</button>
+          <button :class="{ active: tab === 'eval' }" @click="tab = 'eval'">Đánh giá lệnh</button>
           <button :class="{ active: tab === 'chart' }" @click="tab = 'chart'">Biểu đồ</button>
           <button :class="{ active: tab === 'closed' }" @click="tab = 'closed'">Các giao dịch đã đóng</button>
           <button :class="{ active: tab === 'compare' }" @click="tab = 'compare'">So sánh tài khoản</button>
@@ -214,7 +228,9 @@ function onCalendarChange(y: number, m: number) {
             :show-account="accounts.length > 1"
           />
           <PnlBreakdownCharts v-else-if="tab === 'chart'" :positions="positions" :currency="currency" :time-zone="settings.timeZone" />
-          <TradePriceChart v-else-if="tab === 'price'" :positions="positions" :currency="currency" :from="rangeFrom" :to="rangeTo" />
+          <TradePriceChart v-else-if="tab === 'price'" :positions="positions" :currency="currency" :from="rangeFrom" :to="rangeTo"
+            :focus-id="focusId" :focus-timeframe="focusTf" />
+          <TradeEvaluationTab v-else-if="tab === 'eval'" :positions="positions" :currency="currency" @show="showOnChart" />
           <AccountComparisonTable v-else :rows="comparison" :currency="display" />
         </div>
       </section>

@@ -64,6 +64,28 @@ Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên fil
 - Giờ trên chart là giờ server MT5 (UTC+0), cùng hệ với báo cáo.
 - Mã được so khớp cả khi khác hậu tố (`XAUUSDc` ↔ `XAUUSD`).
 
+## Đánh giá lệnh (price action)
+
+Tab **Đánh giá lệnh** đọc nến (file trong `app/candles/`, mặc định khung M15) **đã đóng trước giờ vào lệnh** — không dùng
+nến tương lai — để mô tả bối cảnh thị trường lúc vào từng lệnh, rồi thống kê thắng/thua theo từng yếu tố:
+
+| Yếu tố | Rule |
+|---|---|
+| Cấu trúc | Swing fractal (độ mạnh k nến mỗi bên, mặc định 3) trong 120 nến: HH+HL = tăng, LH+LL = giảm, còn lại = sideway |
+| Thuận / ngược | Buy trong xu hướng tăng / Sell trong xu hướng giảm = thuận; ngược lại = ngược |
+| Phá cấu trúc | Giá đóng nến trước khi vào đã vượt đỉnh swing gần nhất (phá đỉnh) / thủng đáy swing gần nhất |
+| Vị trí trong range | Giá vào ở vùng thấp (< 1/3) / giữa / cao (> 2/3) của range N nến (mặc định 20) |
+| Cản phía trước | Buy: đỉnh swing gần nhất phía trên; Sell: đáy swing gần nhất phía dưới; khoảng cách theo ATR14 |
+| Nến trước khi vào | Engulfing, pin bar, doji, inside bar, nến tăng/giảm; xác nhận hay ngược chiều lệnh |
+| EMA20 | Giá trên/dưới EMA20, EMA dốc lên/xuống (so với 5 nến trước) |
+| Biến động | ATR14 hiện tại so với trung bình 50 nến: tăng (> 1.25×) / thấp (< 0.8×) / bình thường |
+
+- Danh sách từng lệnh có mô tả bối cảnh và nút **Xem trên chart** (mở tab Chart giá, zoom tới lệnh).
+- Tab Chart giá có tuỳ chọn **Cấu trúc (HH/HL/LH/LL)** để hiện các điểm swing.
+- Swing cần k nến bên phải mới được xác nhận → cấu trúc **trễ k nến** so với lúc đỉnh/đáy hình thành
+  (đúng như bot thấy lúc vào lệnh). Giảm độ mạnh swing để bớt trễ.
+- Nhóm dưới 5 lệnh hiện mờ — mẫu quá nhỏ để kết luận.
+
 ## Cách tính
 
 | Chỉ số                 | Cách tính                                                                    |
@@ -107,6 +129,8 @@ src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
 src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max drawdown
 src/utils/position-dimension-bins.ts  Chia nhóm giờ / ATR / ER5 (biểu đồ cột + bản đồ nhiệt)
+src/utils/price-action-features.ts   ATR, EMA, swing fractal, cấu trúc, mẫu nến (không nhìn trước)
+src/utils/trade-evaluation.ts        Đánh giá bối cảnh từng lệnh + thống kê theo yếu tố
 src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),

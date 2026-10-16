@@ -8,6 +8,7 @@ import type { Mt5Position } from '../api/mt5-report-parser'
 import { TIMEFRAME_SECONDS, type Candle, type CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import { useCandlesStore } from '../stores/candles'
 import { money } from '../utils/format'
+import { labelSwings, swingPoints } from '../utils/price-action-features'
 import { barTime, buildTradeMarkers, positionsAtBar, resultColor, symbolMatches } from '../utils/trade-chart-markers'
 import TradeChartTradeList from './TradeChartTradeList.vue'
 
@@ -22,7 +23,13 @@ const props = defineProps<{
   /** Kỳ đã chọn, ms */
   from: number
   to: number
+  /** Mở chart và zoom ngay tới lệnh này (từ tab Đánh giá lệnh) */
+  focusId?: string
+  focusTimeframe?: CandleTimeframe
 }>()
+
+/** Lệnh cần zoom tới sau khi nến tải xong */
+const pendingFocus = ref<Mt5Position | undefined>(props.positions.find((p) => p.id === props.focusId))
 
 const candles = useCandlesStore()
 const TIMEFRAMES: CandleTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1']
@@ -40,6 +47,11 @@ const file = computed(() => candles.files.find((f) => f.symbol === symbol.value 
 watch(
   symbols,
   (list) => {
+    const focus = pendingFocus.value
+    if (focus) {
+      const match = list.find((s) => symbolMatches(focus.symbol, s))
+      if (match) return void (symbol.value = match)
+    }
     if (list.includes(symbol.value)) return
     const count = (s: string) => props.positions.filter((p) => symbolMatches(p.symbol, s)).length
     symbol.value = [...list].sort((a, b) => count(b) - count(a))[0] ?? ''
@@ -47,6 +59,8 @@ watch(
   { immediate: true },
 )
 watch(timeframes, (list) => {
+  const wanted = pendingFocus.value && props.focusTimeframe
+  if (wanted && list.includes(wanted)) return void (timeframe.value = wanted)
   if (!list.includes(timeframe.value)) timeframe.value = list.includes('M5') ? 'M5' : (list[0] ?? 'M5')
 }, { immediate: true })
 
@@ -121,13 +135,37 @@ async function render() {
   if (!series) return
   series.setData(data.value.map((c) => ({ ...c, time: c.time as UTCTimestamp })))
   candleTimes = new Set(data.value.map((c) => c.time))
-  drawMarkers()
-  fitToRange()
+  const focus = pendingFocus.value
+  pendingFocus.value = undefined
+  if (focus) {
+    side.value = 'all'
+    focusTrade(focus)
+  } else {
+    drawMarkers()
+    fitToRange()
+  }
 }
 
+/** Hiện điểm swing HH / HL / LH / LL (fractal 3 nến mỗi bên) để nhìn cấu trúc thị trường */
+const showSwings = ref(false)
+const swingMarkers = computed(() => {
+  const c = data.value
+  if (!showSwings.value || c.length < 10) return []
+  return labelSwings(swingPoints(c, 3, 0, c.length - 1)).map((s) => ({
+    time: s.time as UTCTimestamp,
+    position: (s.kind === 'high' ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
+    shape: 'circle' as const,
+    color: '#8a939b',
+    size: 0.4,
+    text: s.label,
+  }))
+})
+
 function drawMarkers() {
-  series?.setMarkers(buildTradeMarkers(trades.value, tfSec.value, candleTimes, selectedId.value))
+  const markers = [...buildTradeMarkers(trades.value, tfSec.value, candleTimes, selectedId.value), ...swingMarkers.value]
+  series?.setMarkers(markers.sort((a, b) => (a.time as number) - (b.time as number)))
 }
+watch(swingMarkers, drawMarkers)
 
 /** Hiển thị đúng kỳ đã chọn (giao với vùng có nến) */
 function fitToRange() {
@@ -210,6 +248,7 @@ watch(() => [props.from, props.to], fitToRange)
         <button v-for="o in SIDES" :key="o.id" type="button" role="radio" :aria-checked="side === o.id"
           :class="{ on: side === o.id }" @click="side = o.id">{{ o.label }}</button>
       </div>
+      <label class="check"><input v-model="showSwings" type="checkbox" /> Cấu trúc (HH/HL/LH/LL)</label>
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
       <span class="legend">
         <span class="key"><i class="arrow" />Vào lệnh (▲ Buy · ▼ Sell)</span>
@@ -247,6 +286,7 @@ watch(() => [props.from, props.to], fitToRange)
 .toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .select.small { min-height: 32px; padding: 4px 8px; }
 .btn.small { padding: 5px 10px; font-size: 12px; }
+.check { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; background: var(--surface); padding: 6px 12px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .seg button + button { border-left: 1px solid var(--border); }
