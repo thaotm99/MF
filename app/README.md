@@ -33,6 +33,9 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |
 | Lịch PnL hàng ngày     | Nhóm deal theo ngày (giờ server MT5 UTC+0 hoặc giờ máy)                      |
 
+- **Tiền tệ hiển thị:** nút **USD | USC** trên trang Tổng quan, mặc định USD, được nhớ trong trình duyệt.
+  1 USD = 100 USC; áp dụng cho mọi số tiền, nên gộp tài khoản USD với tài khoản cent vẫn cộng đúng.
+  Tài khoản dùng loại tiền khác giữ nguyên và có cảnh báo.
 - Deal `balance`, `credit`, `correction` (nạp/rút) không tính vào lãi/lỗ.
 - **Khối lượng giao dịch chỉ là ước lượng**, vì báo cáo không có contract size: vàng 100 oz, bạc 5 000 oz,
   cặp tiền 100 000. Mã khác không quy đổi được. Tài khoản cent (USC) = USD × 100.

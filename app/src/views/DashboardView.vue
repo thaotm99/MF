@@ -6,7 +6,7 @@ import PnlCalendar from '../components/PnlCalendar.vue'
 import SummaryPanel from '../components/SummaryPanel.vue'
 import { useReportsStore } from '../stores/reports'
 import { useSettingsStore } from '../stores/settings'
-import { dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
+import { conversionRate, convertDeal, dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
 
 const settings = useSettingsStore()
 const reports = useReportsStore()
@@ -36,15 +36,30 @@ const dayStart = (key: string, offset = 0) => {
 const rangeFrom = computed(() => dayStart(range.value.start))
 const rangeTo = computed(() => Math.min(dayStart(range.value.end, 1), now.value + 1))
 
-const deals = computed(() => accounts.value.flatMap((a) => a.deals))
+/** Hệ số quy đổi từng tài khoản sang tiền tệ hiển thị; tài khoản không quy đổi được giữ nguyên */
+const display = computed(() => settings.displayCurrency)
+const rateOf = (accountCurrency: string) => conversionRate(accountCurrency, display.value)
+
+const deals = computed(() =>
+  accounts.value.flatMap((a) => {
+    const f = rateOf(a.currency)
+    return f === null ? a.deals : a.deals.map((d) => convertDeal(d, f, display.value))
+  }),
+)
 const summary = computed(() => summarize(deals.value, rangeFrom.value, rangeTo.value))
 const daily = computed(() => dailyPnl(deals.value, settings.timeZone))
 
 // Balance / equity lấy từ phần tổng kết của báo cáo mới nhất mỗi tài khoản
-const equity = computed(() => accounts.value.reduce((s, a) => s + (a.latest.equity ?? a.latest.balance ?? 0), 0))
-const unrealized = computed(() => accounts.value.reduce((s, a) => s + (a.latest.floatingPnl ?? 0), 0))
-const currencies = computed(() => new Set(accounts.value.map((a) => a.currency)))
-const currency = computed(() => [...currencies.value][0] ?? 'USD')
+const equity = computed(() =>
+  accounts.value.reduce((s, a) => s + (a.latest.equity ?? a.latest.balance ?? 0) * (rateOf(a.currency) ?? 1), 0),
+)
+const unrealized = computed(() =>
+  accounts.value.reduce((s, a) => s + (a.latest.floatingPnl ?? 0) * (rateOf(a.currency) ?? 1), 0),
+)
+/** Tài khoản có tiền tệ không quy đổi được sang USD/USC */
+const unconvertible = computed(() => [...new Set(accounts.value.filter((a) => rateOf(a.currency) === null).map((a) => a.currency))])
+const currencies = computed(() => new Set([display.value, ...unconvertible.value]))
+const currency = computed(() => (unconvertible.value.length && accounts.value.length === 1 ? unconvertible.value[0] : display.value))
 const loading = computed(() => reports.state === 'loading')
 const fileErrors = computed(() => reports.files.filter((f) => f.error))
 /** Thời điểm xuất báo cáo cũ nhất trong các tài khoản đang xem — số liệu chỉ mới đến lúc đó */
@@ -104,13 +119,21 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
             <span>Thời gian</span>
             <DateRangePicker v-model="range" :today="today" />
           </div>
+          <div class="field">
+            <span>Tiền tệ</span>
+            <div class="seg" role="radiogroup" aria-label="Tiền tệ hiển thị">
+              <button v-for="c in (['USD', 'USC'] as const)" :key="c" type="button" role="radio"
+                :aria-checked="settings.displayCurrency === c" :class="{ on: settings.displayCurrency === c }"
+                @click="settings.displayCurrency = c">{{ c }}</button>
+            </div>
+          </div>
           <span v-if="loading" class="loading">Đang đọc báo cáo…</span>
           <span v-else-if="reportTime" class="loading">Số liệu đến {{ fmtTime(reportTime) }} (giờ server)</span>
         </div>
 
         <p v-for="f in fileErrors" :key="f.name" class="alert error"><b>{{ f.name }}:</b> {{ f.error }}</p>
         <p v-if="currencies.size > 1" class="alert">
-          Các tài khoản dùng nhiều loại tiền ({{ [...currencies].join(', ') }}) — số tổng chỉ cộng gộp, không quy đổi.
+          Tài khoản dùng {{ unconvertible.join(', ') }} không quy đổi được sang {{ display }} — số tổng chỉ cộng gộp.
           Hãy chọn từng tài khoản để xem chính xác.
         </p>
 
@@ -167,6 +190,10 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; }
 .filters .field { display: grid; gap: 6px; font-size: 12px; color: var(--text); }
 .filters .field:first-child { width: min(370px, 100%); }
 .account { width: 100%; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; min-height: 40px; }
+.seg button { border: 0; background: var(--surface); padding: 0 16px; color: var(--muted); font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.on { background: var(--accent); color: #fff; }
 .loading { color: var(--muted); font-size: 13px; padding-bottom: 10px; }
 .section-title { font-size: 15px; font-weight: 600; margin: 28px 0 10px; }
 .journal { padding: 0; }

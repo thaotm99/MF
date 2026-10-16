@@ -137,3 +137,31 @@ export function dailyPnl(deals: AccountDeal[], tz: TimeZoneMode): Map<string, Da
   }
   return map
 }
+
+/**
+ * Hệ số quy đổi giữa tiền tệ tài khoản và tiền tệ hiển thị (1 USD = 100 USC).
+ * null nếu không quy đổi được (ví dụ tài khoản EUR).
+ */
+export function conversionRate(from: string, to: string): number | null {
+  if (from === to) return 1
+  if (from === 'USC' && to === 'USD') return 0.01
+  if (from === 'USD' && to === 'USC') return 100
+  return null
+}
+
+const scale = (s: string | undefined, f: number) => (s === undefined ? undefined : String(Number(s) * f))
+
+/** Bản sao deal với mọi số tiền (profit, commission, notional) nhân hệ số f, gắn tiền tệ mới. */
+export function convertDeal(d: AccountDeal, f: number, currency: string): AccountDeal {
+  if (f === 1 && d.currency === currency) return d
+  return {
+    ...d,
+    currency,
+    notional: d.notional === null ? null : d.notional * f,
+    deal: {
+      ...d.deal,
+      commission: scale(d.deal.commission, f),
+      profit: d.deal.profit ? { ...d.deal.profit, amount: scale(d.deal.profit.amount, f) } : undefined,
+    },
+  }
+}
