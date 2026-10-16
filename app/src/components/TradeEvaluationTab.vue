@@ -8,6 +8,7 @@ import { DEFAULT_EVALUATION_OPTIONS, EVALUATION_FEATURES, evaluateTrade, groupBy
 import { evaluateExit, EXIT_FEATURES, groupExits, type ExitEvaluation } from '../utils/trade-exit-evaluation'
 import EvaluationGroupGrid from './EvaluationGroupGrid.vue'
 import TradeEvaluationList from './TradeEvaluationList.vue'
+import TradeEvaluationMethod from './TradeEvaluationMethod.vue'
 
 /**
  * Đánh giá từng lệnh theo price action:
@@ -151,6 +152,8 @@ const exitGroups = computed(() => {
         "Trả lại" = giá tốt nhất trong {{ exitBars }} nến so với giá đóng, theo ATR — lớn nghĩa là lệnh nhả nhiều lợi nhuận trước khi đóng.
       </p>
     </template>
+
+    <TradeEvaluationMethod :options="options" :entry-timeframe="timeframe" :exit-timeframe="exitTimeframe" :exit-bars="exitBars" />
 
     <TradeEvaluationList v-if="evals.length" :evals="evals" :exits="exits" :currency="currency" :options="options"
       @show="(id) => emit('show', id, timeframe)" />
