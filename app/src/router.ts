@@ -19,6 +19,8 @@ export const router = createRouter({
   // Link có #mục (ví dụ /glossary#trade): chờ trang lazy-load render xong rồi cuộn tới (chừa chỗ thanh tìm kiếm dính trên đầu)
   scrollBehavior(to, _from, saved) {
     if (saved) return saved
+    // Trang Thuật ngữ tự cuộn theo #hash (biết chiều cao thanh dính, khác nhau desktop / mobile)
+    if (to.hash && to.name === 'glossary') return false
     if (to.hash) return new Promise((resolve) => setTimeout(() => resolve({ el: to.hash, top: 64 }), 250))
     return { top: 0 }
   },
