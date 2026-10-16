@@ -29,7 +29,7 @@ function startAddAccount() {
     id: null,
     label: '',
     accountIds: '',
-    keyId: settings.keys[0]?.id ?? NEW_KEY,
+    keyId: settings.allKeys[0]?.id ?? NEW_KEY,
     resolveAccessPoint: true,
   }
   accountError.value = ''
@@ -53,7 +53,7 @@ function saveAccount() {
   if (!ids.length) return (accountError.value = 'Cần nhập Account ID.')
   const bad = ids.filter((x) => !/^\d{1,20}$/.test(x))
   if (bad.length) return (accountError.value = `Account ID phải là số: ${bad.join(', ')}`)
-  if (d.keyId === NEW_KEY || !settings.keys.some((k) => k.id === d.keyId)) {
+  if (d.keyId === NEW_KEY || !settings.allKeys.some((k) => k.id === d.keyId)) {
     return (accountError.value = 'Hãy chọn hoặc thêm API key.')
   }
 
@@ -147,7 +147,7 @@ function statusView(t: TestResult): { cls: string; text: string } {
   return { cls: 'pos', text: `✓ ${parts.filter(Boolean).join(' · ')}` }
 }
 
-const keyName = (id: string) => settings.keys.find((k) => k.id === id)?.name ?? '— chưa có key —'
+const keyName = (id: string) => settings.allKeys.find((k) => k.id === id)?.name ?? '— chưa có key —'
 
 async function reloadFile() {
   await settings.loadAccountsFile()
@@ -174,8 +174,8 @@ function saveInlineKey(k: ApiKeyEntry) {
 }
 
 function cancelInlineKey() {
-  if (accountDraft.value) accountDraft.value.keyId = settings.keys[0]?.id ?? NEW_KEY
-  if (!settings.keys.length) accountDraft.value = null
+  if (accountDraft.value) accountDraft.value.keyId = settings.allKeys[0]?.id ?? NEW_KEY
+  if (!settings.allKeys.length) accountDraft.value = null
 }
 
 function removeKey(k: ApiKeyEntry) {
@@ -225,7 +225,7 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
             Key dùng cho file
             <select v-model="settings.fileKeyId" class="select small-select">
               <option :value="null" disabled>— chọn key —</option>
-              <option v-for="k in settings.keys" :key="k.id" :value="k.id">{{ k.name }}</option>
+              <option v-for="k in settings.allKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
             </select>
           </label>
           <button class="btn" @click="reloadFile">Tải lại file</button>
@@ -240,7 +240,7 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
           <label>
             API key
             <select v-model="accountDraft.keyId" class="select">
-              <option v-for="k in settings.keys" :key="k.id" :value="k.id">{{ k.name }} ({{ mask(k.apiKey) }})</option>
+              <option v-for="k in settings.allKeys" :key="k.id" :value="k.id">{{ k.name }} ({{ mask(k.apiKey) }})</option>
               <option :value="NEW_KEY">+ Thêm key mới…</option>
             </select>
           </label>
@@ -316,7 +316,7 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
     <!-- API key -->
     <section class="card block">
       <div class="block-head">
-        <h2>API key <span class="count">{{ settings.keys.length }}</span></h2>
+        <h2>API key <span class="count">{{ settings.allKeys.length }}</span></h2>
         <button v-if="!keyEditing" class="btn" @click="keyEditing = 'new'">+ Thêm key</button>
       </div>
 
@@ -326,22 +326,27 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
           @save="saveKey" @cancel="keyEditing = null" />
       </div>
 
-      <div v-if="settings.keys.length" class="keys">
-        <div v-for="k in settings.keys" :key="k.id" class="key">
+      <div v-if="settings.allKeys.length" class="keys">
+        <div v-for="k in settings.allKeys" :key="k.id" class="key">
           <div>
             <b>{{ k.name }}</b>
+            <span v-if="k.serverSigned" class="badge" title="Đọc từ app/.env; dev server ký request, Secret Key không xuống trình duyệt">
+              .env · ký ở dev server
+            </span>
             <div class="muted small"><code>{{ mask(k.apiKey) }}</code> · {{ k.host }}</div>
             <div class="muted small">Dùng cho {{ settings.accountsUsingKey(k.id).length }} tài khoản</div>
           </div>
-          <div class="row-actions">
+          <div v-if="!k.serverSigned" class="row-actions">
             <button class="btn" @click="keyEditing = k">Sửa</button>
             <button class="btn btn-danger" :disabled="settings.accountsUsingKey(k.id).length > 0"
               :title="settings.accountsUsingKey(k.id).length ? 'Đang có tài khoản dùng key này' : ''"
               @click="removeKey(k)">Xoá</button>
           </div>
+          <span v-else class="muted small">Sửa trong file .env rồi chạy lại npm run dev</span>
         </div>
       </div>
-      <p v-else-if="!keyEditing" class="empty">Chưa có key. Key cũng có thể được thêm ngay khi thêm tài khoản.</p>
+      <p v-if="settings.envKeyError" class="alert error">Key trong .env không hợp lệ: {{ settings.envKeyError }}</p>
+      <p v-else-if="!keyEditing && !settings.allKeys.length" class="empty">Chưa có key. Key cũng có thể được thêm ngay khi thêm tài khoản.</p>
     </section>
 
     <!-- Cài đặt -->
@@ -350,9 +355,11 @@ const mask = (s: string) => (s.length > 12 ? `${s.slice(0, 8)}…${s.slice(-4)}`
       <div class="settings">
         <div>
           <h3>Kết nối</h3>
-          <label class="check"><input v-model="settings.mode" type="radio" value="direct" /> Gọi trực tiếp API Exness</label>
           <label class="check">
-            <input v-model="settings.mode" type="radio" value="proxy" /> Qua proxy dev (Vite) — dùng khi bị chặn CORS
+            <input v-model="settings.mode" type="radio" value="direct" /> Gọi trực tiếp API Exness (hiện bị Exness chặn CORS)
+          </label>
+          <label class="check">
+            <input v-model="settings.mode" type="radio" value="proxy" /> Qua proxy dev (Vite) — khuyên dùng
           </label>
         </div>
         <div>

@@ -46,7 +46,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** Client cho một tài khoản: ký request, tìm access point, giới hạn tốc độ. */
 export class AccountClient {
-  private readonly privateKey: Uint8Array
+  /** null khi key được ký ở dev server (key từ .env) */
+  private readonly privateKey: Uint8Array | null
   private baseUrl: string | null = null
   private limits: LimitsResponse['limits'] | null = null
   private lastCall = new Map<string, number>()
@@ -57,8 +58,9 @@ export class AccountClient {
 
   constructor(cred: AccountCredential, mode: ConnectionMode) {
     this.cred = cred
-    this.mode = mode
-    this.privateKey = parsePrivateKey(cred.secretKey)
+    // Key .env bắt buộc đi qua proxy dev để server ký
+    this.mode = cred.serverSigned ? 'proxy' : mode
+    this.privateKey = cred.serverSigned ? null : parsePrivateKey(cred.secretKey)
   }
 
   private urlFor(host: string, pathWithQuery: string): string {
@@ -82,12 +84,9 @@ export class AccountClient {
 
   private async signedGet<T>(host: string, pathWithQuery: string, operationId: string): Promise<T> {
     await this.throttle(operationId)
-    const headers = buildSignedHeaders({
-      apiKey: this.cred.apiKey,
-      privateKey: this.privateKey,
-      method: 'GET',
-      pathWithQuery,
-    })
+    const headers: Record<string, string> = this.privateKey
+      ? buildSignedHeaders({ apiKey: this.cred.apiKey, privateKey: this.privateKey, method: 'GET', pathWithQuery })
+      : { 'x-exn-server-sign': '1' }
     let res: Response
     try {
       res = await fetch(this.urlFor(host, pathWithQuery), { method: 'GET', headers })

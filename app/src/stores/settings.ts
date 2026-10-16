@@ -52,6 +52,9 @@ export interface FileStatus {
   count?: number
 }
 
+/** id cố định của key đọc từ .env (do dev server ký, không lưu localStorage) */
+export const ENV_KEY_ID = 'env'
+
 export const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 /** Bản v1 lưu key ngay trong từng tài khoản; tách ra thành danh sách key dùng chung. */
@@ -71,10 +74,15 @@ function migrateV1(raw: string): Persisted {
 }
 
 function load(): Persisted {
-  const empty: Persisted = { keys: [], accounts: [], mode: 'direct', timeZone: 'utc', fileKeyId: null }
+  const empty: Persisted = { keys: [], accounts: [], mode: 'proxy', timeZone: 'utc', fileKeyId: null }
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return { ...empty, ...JSON.parse(raw) }
+    if (raw) {
+      const parsed = { ...empty, ...JSON.parse(raw) } as Persisted & { modeVersion?: number }
+      // Exness chặn CORS khi gọi trực tiếp → chuyển một lần sang proxy cho cấu hình cũ
+      if (!parsed.modeVersion) parsed.mode = 'proxy'
+      return parsed
+    }
     const legacy = localStorage.getItem(LEGACY_KEY)
     if (legacy) return migrateV1(legacy)
   } catch {
@@ -92,6 +100,33 @@ export const useSettingsStore = defineStore('settings', () => {
   const timeZone = ref<TimeZoneMode>(initial.timeZone)
   const fileKeyId = ref<string | null>(initial.fileKeyId)
 
+  // ---------- Key từ .env (dev server ký, trình duyệt chỉ biết API key đã che) ----------
+
+  const envKey = ref<ApiKeyEntry | null>(null)
+  const envKeyError = ref<string | null>(null)
+
+  async function loadEnvKey() {
+    try {
+      const res = await fetch('/__exness-env/info', { cache: 'no-store' })
+      if (!(res.headers.get('content-type') ?? '').includes('json')) return // không chạy dev server
+      const info = (await res.json()) as { available: boolean; apiKey?: string; host?: string; error?: string }
+      envKeyError.value = info.error ?? null
+      envKey.value = info.available
+        ? { id: ENV_KEY_ID, name: 'Key từ .env', apiKey: info.apiKey ?? '', secretKey: '', host: info.host ?? '', serverSigned: true }
+        : null
+    } catch {
+      envKey.value = null
+    }
+  }
+
+  /** Key từ .env (nếu có) + key nhập trên giao diện */
+  const allKeys = computed<ApiKeyEntry[]>(() => (envKey.value ? [envKey.value, ...keys.value] : keys.value))
+  /** Key cho tài khoản từ file: key đã chọn, nếu không thì key .env / key đầu tiên */
+  const defaultFileKeyId = computed(() => {
+    const chosen = fileKeyId.value && allKeys.value.some((k) => k.id === fileKeyId.value) ? fileKeyId.value : null
+    return chosen ?? allKeys.value[0]?.id ?? ''
+  })
+
   // immediate: ghi ngay dữ liệu vừa chuyển đổi từ bản v1
   watch(
     [keys, accounts, mode, timeZone, fileKeyId],
@@ -100,6 +135,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const data: Persisted = {
           keys: keys.value, accounts: accounts.value, mode: mode.value, timeZone: timeZone.value, fileKeyId: fileKeyId.value,
         }
+        Object.assign(data, { modeVersion: 2 })
         localStorage.setItem(KEY, JSON.stringify(data))
         localStorage.removeItem(LEGACY_KEY)
       } catch {
@@ -145,12 +181,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const fileAccounts = computed<AccountEntry[]>(() =>
     fileRows.value.map((r) => {
       const id = String(r.account_id)
-      const named = r.key ? keys.value.find((k) => k.name === r.key) : undefined
+      const named = r.key ? allKeys.value.find((k) => k.name === r.key) : undefined
       return {
         id: `file:${id}`,
         label: r.account_name ?? r.acount_name ?? `#${id}`,
         accountId: id,
-        keyId: named?.id ?? (r.key ? '' : (fileKeyId.value ?? keys.value[0]?.id ?? '')),
+        keyId: named?.id ?? (r.key ? '' : defaultFileKeyId.value),
         resolveAccessPoint: r.resolve_access_point ?? true,
         source: 'file' as const,
       }
@@ -166,9 +202,9 @@ export const useSettingsStore = defineStore('settings', () => {
   /** Tài khoản đã ghép với key; bỏ qua tài khoản chưa có key hợp lệ. */
   const credentials = computed<AccountCredential[]>(() =>
     allAccounts.value.flatMap((a) => {
-      const k = keys.value.find((x) => x.id === a.keyId)
+      const k = allKeys.value.find((x) => x.id === a.keyId)
       return k
-        ? [{ id: a.id, label: a.label, accountId: a.accountId, apiKey: k.apiKey, secretKey: k.secretKey, host: k.host, resolveAccessPoint: a.resolveAccessPoint }]
+        ? [{ id: a.id, label: a.label, accountId: a.accountId, apiKey: k.apiKey, secretKey: k.secretKey, host: k.host, resolveAccessPoint: a.resolveAccessPoint, serverSigned: k.serverSigned }]
         : []
     }),
   )
@@ -198,7 +234,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const accountsUsingKey = (keyId: string) => allAccounts.value.filter((a) => a.keyId === keyId)
 
   return {
-    keys, accounts, mode, timeZone, fileKeyId, credentials, allAccounts, fileStatus,
-    loadAccountsFile, upsertKey, removeKey, upsertAccount, removeAccount, accountsUsingKey,
+    keys, allKeys, envKey, envKeyError, accounts, mode, timeZone, fileKeyId, defaultFileKeyId,
+    credentials, allAccounts, fileStatus, loadAccountsFile, loadEnvKey, upsertKey, removeKey, upsertAccount, removeAccount, accountsUsingKey,
   }
 })

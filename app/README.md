@@ -7,9 +7,25 @@ Dashboard tổng quan cho nhiều tài khoản Exness, gọi trực tiếp **Exn
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # bản production trong dist/
+cp .env.example .env   # điền API_KEY, SECRET_KEY (tuỳ chọn API_HOST)
+npm run dev            # http://localhost:5173
 ```
+
+## Key trong `.env` (khuyên dùng)
+
+```
+API_KEY=exnsk-...
+SECRET_KEY=<hex/base64/PEM Ed25519>
+API_HOST=https://api.exness.com   # tuỳ chọn
+```
+
+- **Dev server (Node) đọc `.env` và tự ký request.** Secret Key không bao giờ được gửi xuống trình duyệt;
+  trình duyệt chỉ thấy API key đã che (`/__exness-env/info`).
+- Trên trang Quản lý tài khoản, key này hiện tên **"Key từ .env"** và là key mặc định cho tài khoản từ file.
+- Chỉ cho phép request GET và chỉ nhận request từ localhost.
+- Sửa `.env` xong thì chạy lại `npm run dev`.
+- `.env` đã nằm trong `.gitignore`. **Không commit file này.**
+- Cách này chỉ chạy được với `npm run dev`; bản build tĩnh (`npm run build`) không có key `.env`.
 
 ## Quản lý tài khoản (trang `/accounts`)
 
@@ -44,10 +60,11 @@ Nút "Kiểm tra" gọi `account` và `snapshot` để xác nhận key truy cậ
 
 ## Chế độ kết nối
 
-- **Gọi trực tiếp**: trình duyệt gọi thẳng tới host Exness. Cách này cần API cho phép CORS.
-- **Qua proxy dev**: nếu bị lỗi CORS, chọn chế độ này. Vite dev server sẽ chuyển tiếp request qua
-  `/__exness/<host>/...` (xem `vite.config.ts`). Chữ ký vẫn được tạo ở trình duyệt. Chế độ này chỉ có
-  khi chạy `npm run dev`.
+- **Qua proxy dev** (mặc định): Vite dev server chuyển tiếp request qua `/__exness/<host>/...`
+  (xem `exness-dev-proxy.ts`). Với key nhập tay, chữ ký vẫn được tạo ở trình duyệt.
+- **Gọi trực tiếp**: trình duyệt gọi thẳng tới host Exness. Hiện Exness **chặn CORS**, nên cách này báo lỗi
+  "Không kết nối được API".
+- Key từ `.env` luôn đi qua proxy dev.
 
 ## Dữ liệu và cách tính
 

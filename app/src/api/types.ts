@@ -8,6 +8,8 @@ export interface ApiKeyEntry {
   secretKey: string
   /** Host từ DNS widget trong Key Management, ví dụ https://api.exness.com */
   host: string
+  /** Key đọc từ .env: dev server tự ký, secretKey để trống ở trình duyệt */
+  serverSigned?: boolean
 }
 
 /** Tài khoản giao dịch người dùng thêm vào dashboard. */
@@ -34,6 +36,8 @@ export interface AccountCredential {
   host: string
   /** Gọi GET /v1/trading/access-point để lấy host riêng của tài khoản */
   resolveAccessPoint: boolean
+  /** true = request được ký ở dev server bằng key trong .env */
+  serverSigned?: boolean
 }
 
 export interface AccountSettings {

@@ -2,8 +2,10 @@
 import { RouterLink, RouterView } from 'vue-router'
 import { useSettingsStore } from './stores/settings'
 
-// Đọc danh sách tài khoản từ public/accounts.json khi mở app
-useSettingsStore().loadAccountsFile()
+// Khi mở app: đọc danh sách tài khoản (public/accounts.json) và key từ .env (qua dev server)
+const settings = useSettingsStore()
+settings.loadAccountsFile()
+settings.loadEnvKey()
 </script>
 
 <template>
