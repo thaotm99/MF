@@ -17,7 +17,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Trang | Đường dẫn | Nội dung |
 |---|---|---|
 | Tổng quan | `/` | Số liệu tổng của kỳ, ngày lãi/lỗ lớn nhất, chuỗi thua, lịch PnL hàng ngày |
-| Chart giá | `/chart` | Nến + điểm vào/ra lệnh, cấu trúc HH/HL/LH/LL (`/chart?trade=<id>&tf=M15` zoom tới lệnh) |
+| Chart giá | `/chart` | Nến + điểm vào/ra lệnh, lọc Buy/Sell và Thắng/Thua, cấu trúc HH/HL/LH/LL (`/chart?trade=<id>&tf=M15` zoom tới lệnh) |
 | Đánh giá lệnh | `/evaluation` | Bối cảnh price action từng lệnh + thắng/thua theo yếu tố |
 | Biểu đồ | `/breakdown` | Lãi/lỗ theo giờ, chiều, khối lượng, mã, ATR, ER5 + bản đồ nhiệt |
 | Lệnh đã đóng | `/trades` | Danh sách deal đóng |

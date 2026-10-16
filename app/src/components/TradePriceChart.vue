@@ -74,9 +74,19 @@ const SIDES: { id: SideFilter; label: string }[] = [
 ]
 const side = ref<SideFilter>('all')
 
+/** Lọc theo kết quả: tất cả / chỉ lệnh thắng (lãi ≥ 0) / chỉ lệnh thua */
+type ResultFilter = 'all' | 'win' | 'loss'
+const RESULTS: { id: ResultFilter; label: string }[] = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'win', label: 'Thắng' },
+  { id: 'loss', label: 'Thua' },
+]
+const result = ref<ResultFilter>('all')
+
 const trades = computed(() =>
   props.positions
     .filter((p) => symbolMatches(p.symbol, symbol.value) && (side.value === 'all' || p.type === side.value))
+    .filter((p) => result.value === 'all' || (result.value === 'win') === p.netProfit >= 0)
     .sort((a, b) => b.openTime.localeCompare(a.openTime)),
 )
 const tfSec = computed(() => TIMEFRAME_SECONDS[timeframe.value])
@@ -244,7 +254,7 @@ watch(file, () => {
   selectedId.value = undefined
   void render()
 })
-// Lệnh đang chọn bị lọc mất (đổi Buy/Sell, đổi kỳ) → bỏ chọn và xoá đường giá vào/ra
+// Lệnh đang chọn bị lọc mất (đổi Buy/Sell, Thắng/Thua, đổi kỳ) → bỏ chọn và xoá đường giá vào/ra
 watch(trades, (list) => {
   if (selectedId.value && !list.some((p) => p.id === selectedId.value)) {
     selectedId.value = undefined
@@ -272,6 +282,10 @@ watch(() => [props.from, props.to], fitToRange)
       <div class="seg" role="radiogroup" aria-label="Chiều lệnh">
         <button v-for="o in SIDES" :key="o.id" type="button" role="radio" :aria-checked="side === o.id"
           :class="{ on: side === o.id }" @click="side = o.id">{{ o.label }}</button>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Kết quả lệnh">
+        <button v-for="o in RESULTS" :key="o.id" type="button" role="radio" :aria-checked="result === o.id"
+          :class="{ on: result === o.id }" @click="result = o.id">{{ o.label }}</button>
       </div>
       <label class="check"><input v-model="showSwings" type="checkbox" /> Cấu trúc (HH/HL/LH/LL)</label>
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
