@@ -5,9 +5,11 @@ import DateRangePicker, { type DateRange } from '../components/DateRangePicker.v
 import PnlBreakdownCharts from '../components/PnlBreakdownCharts.vue'
 import PnlCalendar from '../components/PnlCalendar.vue'
 import SummaryPanel from '../components/SummaryPanel.vue'
+import TradingExtremesStrip from '../components/TradingExtremesStrip.vue'
 import { useReportsStore } from '../stores/reports'
 import { useSettingsStore } from '../stores/settings'
 import { conversionRate, convertDeal, dailyPnl, dayKey, startOfDay, summarize } from '../utils/stats'
+import { dayExtremes, maxLosingStreak } from '../utils/trading-extremes-stats'
 
 const settings = useSettingsStore()
 const reports = useReportsStore()
@@ -65,6 +67,9 @@ const daily = computed(() => dailyPnl(deals.value, settings.timeZone))
 /** Hôm nay theo múi giờ đã chọn — luôn tính riêng, không theo kỳ đã chọn */
 const todayStat = computed(() => daily.value.get(today.value) ?? { pnl: 0, trades: 0 })
 const todayLabel = computed(() => today.value.slice(8, 10) + '/' + today.value.slice(5, 7))
+// Ngày lãi / lỗ lớn nhất và chuỗi thua dài nhất — trong kỳ đã chọn
+const extremes = computed(() => dayExtremes(daily.value, range.value.start, range.value.end))
+const losingStreak = computed(() => maxLosingStreak(deals.value, rangeFrom.value, rangeTo.value))
 
 // Balance / equity lấy từ phần tổng kết của báo cáo mới nhất mỗi tài khoản
 const equity = computed(() =>
@@ -163,6 +168,13 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
           :today-pnl="todayStat.pnl"
           :today-trades="todayStat.trades"
           :today-label="todayLabel"
+        />
+        <TradingExtremesStrip
+          :best="extremes.best"
+          :worst="extremes.worst"
+          :streak="losingStreak"
+          :currency="currency"
+          :loading="loading"
         />
       </section>
 

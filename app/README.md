@@ -51,6 +51,8 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Lệnh đã đóng           | Số deal `out`. Có lãi: profit ≥ 0, giống "Profit Trades" của MT5             |
 | Tỷ lệ chiến thắng      | Lệnh có lãi / lệnh đã đóng trong kỳ đã chọn                                  |
 | Lợi nhuận hôm nay      | Lãi/lỗ ròng của lệnh đóng hôm nay (theo múi giờ đã chọn), không phụ thuộc kỳ |
+| Ngày lãi / lỗ lớn nhất | Ngày có lãi/lỗ ròng cao nhất trên lịch PnL trong kỳ (theo múi giờ đã chọn)   |
+| Thua liên tiếp nhiều nhất | Chuỗi lệnh lỗ (profit < 0) dài nhất trong kỳ, theo giờ đóng; như "Maximum consecutive losses" của MT5 |
 | Phí giao dịch          | Commission + Fee + Swap                                                      |
 | Khối lượng giao dịch   | Σ lot × contract size × giá của deal `in` và `out`, quy về tiền tệ tài khoản  |
 | Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |
@@ -77,6 +79,7 @@ src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
+src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
 src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
 src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ)
