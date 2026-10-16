@@ -7,7 +7,6 @@ import { computed } from 'vue'
 const props = defineProps<{
   summary: Summary
   equity: number
-  unrealized: number
   currency: string
   loading: boolean
   /** Lãi/lỗ ròng của các lệnh đóng hôm nay (không phụ thuộc kỳ đã chọn) */
@@ -38,14 +37,6 @@ const winRate = computed(() =>
         </li>
         <li>Lãi <b>{{ money(summary.profit, { sign: true }) }} {{ currency }}</b></li>
         <li>Lỗ <b>{{ money(summary.loss) }} {{ currency }}</b></li>
-        <li>
-          Phí giao dịch <b>{{ money(summary.tradingCost) }} {{ currency }}</b>
-          <i class="hint" title="Commission của deal mở/đóng + swap + admin fee">i</i>
-        </li>
-        <li>
-          P/L chưa thực hiện <b>{{ money(unrealized) }} {{ currency }}</b>
-          <i class="hint" title="Equity − Balance hiện tại của các lệnh đang mở">i</i>
-        </li>
       </ul>
     </div>
 

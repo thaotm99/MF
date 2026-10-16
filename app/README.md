@@ -46,7 +46,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 ## Chart giá (điểm vào/ra lệnh)
 
 Tab **Chart giá** vẽ nến từ file CSV trong `app/candles/` (gitignored) và đánh dấu vị thế đóng trong kỳ đã chọn:
-mũi tên xanh dương = vào lệnh (▲ Buy, ▼ Sell), chấm xanh lá / đỏ = ra lệnh lãi / lỗ. Bấm một lệnh trong danh sách
+mũi tên = vào lệnh (▲ Buy, ▼ Sell), chấm tròn = ra lệnh; cả hai tô xanh nếu lệnh lãi, đỏ nếu lỗ. Bấm một lệnh trong danh sách
 để zoom tới lệnh và kẻ đường giá vào/ra; rê chuột lên marker để xem chi tiết.
 
 Lấy nến từ MT5 — một trong hai cách:
@@ -68,15 +68,14 @@ Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên fil
 
 | Chỉ số                 | Cách tính                                                                    |
 |------------------------|------------------------------------------------------------------------------|
-| Lợi nhuận ròng         | Lãi + lỗ của các deal `out` + phí giao dịch                                  |
+| Lợi nhuận ròng         | Lãi + lỗ của các deal `out` + Commission/Fee/Swap (phí không hiển thị riêng) |
 | Lệnh đã đóng           | Số deal `out`. Có lãi: profit ≥ 0, giống "Profit Trades" của MT5             |
 | Tỷ lệ chiến thắng      | Lệnh có lãi / lệnh đã đóng trong kỳ đã chọn                                  |
 | Lợi nhuận hôm nay      | Lãi/lỗ ròng của lệnh đóng hôm nay (theo múi giờ đã chọn), không phụ thuộc kỳ |
 | Ngày lãi / lỗ lớn nhất | Ngày có lãi/lỗ ròng cao nhất trên lịch PnL trong kỳ (theo múi giờ đã chọn)   |
 | Thua liên tiếp nhiều nhất | Chuỗi lệnh lỗ (profit < 0) dài nhất trong kỳ, theo giờ đóng; như "Maximum consecutive losses" của MT5 |
-| Phí giao dịch          | Commission + Fee + Swap                                                      |
 | Khối lượng giao dịch   | Σ lot × contract size × giá của deal `in` và `out`, quy về tiền tệ tài khoản  |
-| Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |
+| Equity                 | `Equity:` trong phần tổng kết của báo cáo mới nhất                            |
 | Lịch PnL hàng ngày     | Nhóm deal theo ngày (giờ server MT5 UTC+0 hoặc giờ máy)                      |
 | Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã / ATR / ER5 |
 | ATR, ER5 lúc vào lệnh  | Đọc từ comment lệnh của EA: `A:` (cũ `ATR :`), `er5:` (cũ `er:`, ER trên M5). ATR chia bước 0.5 (gộp ≥ 5), ER5 bước 0.1. Lệnh không có giá trị hoặc comment bị MT5 cắt (31 ký tự) thì bỏ qua |

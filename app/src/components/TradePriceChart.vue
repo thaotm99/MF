@@ -8,7 +8,7 @@ import type { Mt5Position } from '../api/mt5-report-parser'
 import { TIMEFRAME_SECONDS, type Candle, type CandleTimeframe } from '../api/mt5-candles-csv-parser'
 import { useCandlesStore } from '../stores/candles'
 import { money } from '../utils/format'
-import { barTime, buildTradeMarkers, MARKER_COLORS, positionsAtBar, symbolMatches } from '../utils/trade-chart-markers'
+import { barTime, buildTradeMarkers, positionsAtBar, resultColor, symbolMatches } from '../utils/trade-chart-markers'
 import TradeChartTradeList from './TradeChartTradeList.vue'
 
 /**
@@ -77,10 +77,10 @@ onMounted(() => {
     crosshair: { mode: CrosshairMode.Normal },
     localization: { locale: 'vi-VN' },
   })
-  // Nến màu xám để nhường nổi bật cho marker vào/ra lệnh
+  // Nến xanh / đỏ nhạt (bán trong suốt) để marker lãi/lỗ màu đậm vẫn nổi bật trên nến
   series = chart.addCandlestickSeries({
-    upColor: '#c7cdd2', downColor: '#5f6b75', borderVisible: false,
-    wickUpColor: '#aeb5bb', wickDownColor: '#5f6b75',
+    upColor: 'rgba(34, 160, 107, 0.45)', downColor: 'rgba(201, 55, 44, 0.45)', borderVisible: false,
+    wickUpColor: 'rgba(34, 160, 107, 0.6)', wickDownColor: 'rgba(201, 55, 44, 0.6)',
   })
   chart.subscribeCrosshairMove(onCrosshair)
   if (candles.state === 'idle') candles.list()
@@ -136,8 +136,8 @@ function focusTrade(p: Mt5Position) {
   if (!chart || !series) return
   for (const l of priceLines) series.removePriceLine(l)
   priceLines = [
-    series.createPriceLine({ price: p.openPrice, color: MARKER_COLORS.entry, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `Vào ${p.type === 'buy' ? 'Buy' : 'Sell'}` }),
-    series.createPriceLine({ price: p.closePrice, color: p.netProfit >= 0 ? MARKER_COLORS.win : MARKER_COLORS.loss, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Ra' }),
+    series.createPriceLine({ price: p.openPrice, color: resultColor(p), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `Vào ${p.type === 'buy' ? 'Buy' : 'Sell'}` }),
+    series.createPriceLine({ price: p.closePrice, color: resultColor(p), lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: 'Ra' }),
   ]
   const pad = tfSec.value * 40
   chart.timeScale().setVisibleRange({
@@ -157,7 +157,7 @@ function onCrosshair(param: MouseEventParams) {
     y: param.point.y,
     rows: events.slice(0, 6).map(({ p, kind }) => ({
       key: kind + p.id,
-      color: kind === 'in' ? MARKER_COLORS.entry : p.netProfit >= 0 ? MARKER_COLORS.win : MARKER_COLORS.loss,
+      color: resultColor(p),
       text: kind === 'in'
         ? `Vào ${p.type === 'buy' ? 'Buy' : 'Sell'} ${p.volume} lot @ ${p.openPrice}`
         : `Ra @ ${p.closePrice}`,
@@ -189,8 +189,9 @@ watch(() => [props.from, props.to], fitToRange)
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
       <span class="legend">
         <span class="key"><i class="arrow" />Vào lệnh (▲ Buy · ▼ Sell)</span>
-        <span class="key"><i class="dot win" />Ra lệnh lãi</span>
-        <span class="key"><i class="dot loss" />Ra lệnh lỗ</span>
+        <span class="key"><i class="dot" />Ra lệnh</span>
+        <span class="key"><i class="sw win" />Lãi</span>
+        <span class="key"><i class="sw loss" />Lỗ</span>
       </span>
     </div>
 
@@ -228,10 +229,11 @@ watch(() => [props.from, props.to], fitToRange)
 .seg button.on { background: var(--accent); color: #fff; }
 .legend { display: flex; gap: 12px; margin-left: auto; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .key { display: inline-flex; align-items: center; gap: 5px; }
-.arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid #1f7bff; }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.dot.win { background: #22a06b; }
-.dot.loss { background: #c9372c; }
+.arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw.win { background: var(--chart-pos); }
+.sw.loss { background: var(--chart-neg); }
 .chart-box { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: opacity .2s; }
 .chart-box.dim { opacity: .55; }
 .chart { height: 440px; width: 100%; }

@@ -16,7 +16,8 @@ const settings = useSettingsStore()
 const TradePriceChart = defineAsyncComponent(() => import('../components/TradePriceChart.vue'))
 const reports = useReportsStore()
 
-const selected = ref<'all' | string>('all')
+/** Mặc định: tài khoản đầu tiên (chọn "Tất cả tài khoản" để cộng gộp) */
+const selected = ref<'all' | string>('')
 const tab = ref<'daily' | 'closed' | 'chart' | 'price'>('daily')
 const now = ref(Date.now())
 
@@ -77,9 +78,6 @@ const losingStreak = computed(() => maxLosingStreak(deals.value, rangeFrom.value
 const equity = computed(() =>
   accounts.value.reduce((s, a) => s + (a.latest.equity ?? a.latest.balance ?? 0) * (rateOf(a.currency) ?? 1), 0),
 )
-const unrealized = computed(() =>
-  accounts.value.reduce((s, a) => s + (a.latest.floatingPnl ?? 0) * (rateOf(a.currency) ?? 1), 0),
-)
 /** Tài khoản có tiền tệ không quy đổi được sang USD/USC */
 const unconvertible = computed(() => [...new Set(accounts.value.filter((a) => rateOf(a.currency) === null).map((a) => a.currency))])
 const currencies = computed(() => new Set([display.value, ...unconvertible.value]))
@@ -94,8 +92,10 @@ const reportTime = computed(() =>
 watch(
   () => reports.accounts.map((a) => a.id),
   (ids) => {
-    if (selected.value !== 'all' && !ids.includes(selected.value)) selected.value = 'all'
+    if (selected.value === 'all' || ids.includes(selected.value)) return
+    selected.value = ids[0] ?? ''
   },
+  { immediate: true },
 )
 
 function refresh() {
@@ -164,7 +164,6 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
         <SummaryPanel
           :summary="summary"
           :equity="equity"
-          :unrealized="unrealized"
           :currency="currency"
           :loading="loading"
           :today-pnl="todayStat.pnl"
@@ -184,9 +183,9 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
       <section class="card journal">
         <nav class="tabs">
           <button :class="{ active: tab === 'daily' }" @click="tab = 'daily'">PnL hàng ngày</button>
-          <button :class="{ active: tab === 'closed' }" @click="tab = 'closed'">Các giao dịch đã đóng</button>
-          <button :class="{ active: tab === 'chart' }" @click="tab = 'chart'">Biểu đồ</button>
           <button :class="{ active: tab === 'price' }" @click="tab = 'price'">Chart giá</button>
+          <button :class="{ active: tab === 'chart' }" @click="tab = 'chart'">Biểu đồ</button>
+          <button :class="{ active: tab === 'closed' }" @click="tab = 'closed'">Các giao dịch đã đóng</button>
         </nav>
         <div class="tab-body">
           <PnlCalendar
