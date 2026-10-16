@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { decodeReport, estimateContract, parseMt5Report, type Mt5Report } from '../api/mt5-report-parser'
+import { decodeReport, estimateContract, parseMt5Report, type Mt5Position, type Mt5Report } from '../api/mt5-report-parser'
 import type { Deal } from '../api/types'
 import { notionalFrom, type AccountDeal } from '../utils/stats'
 
@@ -24,6 +24,8 @@ export interface Mt5Account {
   /** Báo cáo mới nhất — dùng cho balance/equity */
   latest: Mt5Report
   deals: AccountDeal[]
+  /** Vị thế đã đóng (bảng Positions), gộp theo id — dùng cho tab Biểu đồ */
+  positions: Mt5Position[]
   firstDealTime?: string
   lastDealTime?: string
 }
@@ -91,6 +93,8 @@ export const useReportsStore = defineStore('reports', () => {
         }
       }
       const deals = [...map.values()]
+      const posMap = new Map<string, Mt5Position>()
+      for (const f of sorted) for (const p of f.report!.positions) posMap.set(p.id, p)
       const times = deals.map((d) => d.deal.create_time).sort()
       return {
         id,
@@ -102,6 +106,7 @@ export const useReportsStore = defineStore('reports', () => {
         files: sorted.map((f) => f.name),
         latest,
         deals,
+        positions: [...posMap.values()],
         firstDealTime: times[0],
         lastDealTime: times[times.length - 1],
       }

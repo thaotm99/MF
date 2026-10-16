@@ -32,6 +32,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Khối lượng giao dịch   | Σ lot × contract size × giá của deal `in` và `out`, quy về tiền tệ tài khoản  |
 | Equity / P/L chưa TH   | `Equity:` / `Floating P/L:` trong phần tổng kết của báo cáo mới nhất          |
 | Lịch PnL hàng ngày     | Nhóm deal theo ngày (giờ server MT5 UTC+0 hoặc giờ máy)                      |
+| Tab Biểu đồ            | Lãi/lỗ ròng (Profit + Commission + Swap) của vị thế đóng trong kỳ, từ bảng **Positions**, theo giờ vào lệnh / Buy-Sell / khối lượng / mã |
 
 - **Tiền tệ hiển thị:** nút **USD | USC** trên trang Tổng quan, mặc định USD, được nhớ trong trình duyệt.
   1 USD = 100 USC; áp dụng cho mọi số tiền, nên gộp tài khoản USD với tài khoản cent vẫn cộng đúng.
@@ -51,5 +52,6 @@ src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/views/                    DashboardView (Tổng quan), ReportsView (Báo cáo MT5)
-src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel
+src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangePicker, Mt5ReportsPanel,
+                              PnlBreakdownCharts + PnlBarChart (tab Biểu đồ)
 ```

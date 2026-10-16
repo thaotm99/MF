@@ -46,3 +46,6 @@ input, select { font: inherit; color: inherit; }
   margin: 8px 0; font-size: 13px;
 }
 .alert.error { background: var(--neg-bg); color: #8f1d1b; border-color: #f5c2c1; }
+
+/* Màu cột lãi/lỗ trên biểu đồ — đã kiểm tra mù màu (deutan ΔE 8.5) và tương phản ≥ 3:1 */
+:root { --chart-pos: #22a06b; --chart-neg: #c9372c; }

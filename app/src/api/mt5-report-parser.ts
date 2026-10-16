@@ -11,6 +11,19 @@ import type { Deal } from './types'
  * Thời gian trong báo cáo là giờ server MT5 (Exness: UTC+0).
  */
 
+/** Một vị thế đã đóng trong bảng Positions (đủ thông tin mở + đóng). */
+export interface Mt5Position {
+  id: string
+  symbol: string
+  type: 'buy' | 'sell'
+  volume: number
+  /** ISO, giờ server */
+  openTime: string
+  closeTime: string
+  /** Lãi/lỗ ròng = Profit + Commission + Swap */
+  netProfit: number
+}
+
 export interface Mt5Report {
   login: string
   name?: string
@@ -22,6 +35,7 @@ export interface Mt5Report {
   equity?: number
   floatingPnl?: number
   deals: Deal[]
+  positions: Mt5Position[]
 }
 
 /** MT5 thường lưu báo cáo dạng UTF-16 LE có BOM. */
@@ -54,11 +68,15 @@ function toIso(s: string): string | null {
   return `${y}-${mo}-${d}T${h}:${mi}:${se}+00:00`
 }
 
-/** Ô của một hàng, mở rộng theo colspan để khớp chỉ số cột với hàng tiêu đề. */
+/**
+ * Ô của một hàng, mở rộng theo colspan để khớp chỉ số cột với hàng tiêu đề.
+ * Bỏ ô class="hidden": MT5 dùng ô ẩn (cột Cost, comment colspan=8 trong Positions) làm lệch cột.
+ */
 function rowCells(tr: Element): string[] {
   const out: string[] = []
   for (const td of Array.from(tr.children)) {
     if (td.tagName !== 'TD' && td.tagName !== 'TH') continue
+    if (td.classList.contains('hidden')) continue
     const span = Math.max(1, Number(td.getAttribute('colspan') ?? 1) || 1)
     out.push(clean(td.textContent))
     for (let i = 1; i < span; i++) out.push('')
@@ -148,6 +166,9 @@ export function parseMt5Report(html: string): Mt5Report {
     }
   }
 
+  // ----- Bảng Positions (vị thế đã đóng) -----
+  const positions = parsePositions(rows)
+
   // ----- Tổng kết -----
   const after = rows.slice(headerIdx)
   const pick = (label: string) => {
@@ -165,7 +186,45 @@ export function parseMt5Report(html: string): Mt5Report {
     equity: pick('Equity:'),
     floatingPnl: pick('Floating P/L:'),
     deals,
+    positions,
   }
+}
+
+/** Bảng Positions: Time | Position | Symbol | Type | Volume | Price | S / L | T / P | Time | Price | Commission | Swap | Profit */
+function parsePositions(rows: string[][]): Mt5Position[] {
+  const headerIdx = rows.findIndex((c) => {
+    const lc = c.map((x) => x.toLowerCase())
+    return lc.includes('position') && lc.includes('symbol') && lc.includes('profit') && lc.includes('s / l')
+  })
+  if (headerIdx === -1) return []
+  const header = rows[headerIdx].map((c) => c.toLowerCase())
+  const C = {
+    open: header.indexOf('time'), close: header.lastIndexOf('time'), id: header.indexOf('position'),
+    symbol: header.indexOf('symbol'), type: header.indexOf('type'), volume: header.indexOf('volume'),
+    commission: header.indexOf('commission'), swap: header.indexOf('swap'), profit: header.indexOf('profit'),
+  }
+  const out: Mt5Position[] = []
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const c = rows[i]
+    const openTime = toIso(c[C.open] ?? '')
+    if (!openTime) {
+      if (c.filter(Boolean).length > 0) break // hết bảng
+      continue
+    }
+    const closeTime = toIso(c[C.close] ?? '')
+    const type = (c[C.type] ?? '').toLowerCase()
+    if (!closeTime || (type !== 'buy' && type !== 'sell')) continue
+    out.push({
+      id: c[C.id],
+      symbol: c[C.symbol],
+      type,
+      volume: num((c[C.volume] ?? '').split('/')[0]),
+      openTime,
+      closeTime,
+      netProfit: num(c[C.profit]) + num(c[C.commission]) + num(c[C.swap]),
+    })
+  }
+  return out
 }
 
 /**

@@ -2,6 +2,7 @@
 import { computed, onActivated, ref, watch } from 'vue'
 import ClosedDeals from '../components/ClosedDeals.vue'
 import DateRangePicker, { type DateRange } from '../components/DateRangePicker.vue'
+import PnlBreakdownCharts from '../components/PnlBreakdownCharts.vue'
 import PnlCalendar from '../components/PnlCalendar.vue'
 import SummaryPanel from '../components/SummaryPanel.vue'
 import { useReportsStore } from '../stores/reports'
@@ -46,6 +47,19 @@ const deals = computed(() =>
     return f === null ? a.deals : a.deals.map((d) => convertDeal(d, f, display.value))
   }),
 )
+/** Vị thế đóng trong kỳ, đã quy đổi tiền tệ — cho tab Biểu đồ */
+const positions = computed(() =>
+  accounts.value.flatMap((a) => {
+    const f = rateOf(a.currency) ?? 1
+    return a.positions
+      .filter((p) => {
+        const t = Date.parse(p.closeTime)
+        return t >= rangeFrom.value && t < rangeTo.value
+      })
+      .map((p) => (f === 1 ? p : { ...p, netProfit: p.netProfit * f }))
+  }),
+)
+
 const summary = computed(() => summarize(deals.value, rangeFrom.value, rangeTo.value))
 const daily = computed(() => dailyPnl(deals.value, settings.timeZone))
 
@@ -172,7 +186,7 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ')
             :to="rangeTo"
             :show-account="accounts.length > 1"
           />
-          <p v-else class="soon">Biểu đồ sẽ được bổ sung ở phiên bản sau.</p>
+          <PnlBreakdownCharts v-else :positions="positions" :currency="currency" :time-zone="settings.timeZone" />
         </div>
       </section>
     </template>
