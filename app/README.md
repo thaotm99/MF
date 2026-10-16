@@ -12,6 +12,27 @@ npm run dev      # http://localhost:5173
 
 App chỉ đọc được báo cáo khi chạy `npm run dev`.
 
+## Public ra internet (Cloudflare Tunnel)
+
+1. Cài một lần: `brew install cloudflared`
+2. Đặt mật khẩu trong `app/.env` (copy từ `.env.example`; file `.env` không commit):
+   ```
+   DASHBOARD_PASSWORD=mat-khau-dai-kho-doan
+   ```
+3. Chạy hai cửa sổ terminal:
+   ```bash
+   npm run dev      # cửa sổ 1
+   npm run tunnel   # cửa sổ 2 → in ra https://xxx.trycloudflare.com
+   ```
+4. Mở link, trình duyệt hỏi đăng nhập: user `admin` (đổi bằng `DASHBOARD_USER`), mật khẩu ở bước 2.
+
+- Có mật khẩu: mọi trang, file và báo cáo đều phải đăng nhập (kể cả trên máy mình). Sai mật khẩu bị trễ 1 giây.
+- **Chưa đặt mật khẩu: truy cập qua tunnel bị từ chối (403)**, chỉ dùng được trực tiếp trên máy.
+- Link `trycloudflare.com` đổi mỗi lần chạy `npm run tunnel`. Muốn link cố định cần tài khoản Cloudflare
+  + named tunnel; thêm tên miền đó vào `DASHBOARD_ALLOWED_HOSTS`.
+- Máy phải bật và đang chạy cả `npm run dev` lẫn `npm run tunnel`.
+- Sửa `.env` thì chạy lại `npm run dev`.
+
 ## Thêm dữ liệu
 
 1. Trong MT5 (giao diện **tiếng Anh**): **Toolbox → History** → chuột phải → **Report → HTML**.
@@ -50,6 +71,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 
 ```
 mt5-reports-dev-endpoint.ts   Dev server: liệt kê / đọc file trong reports/ (chỉ localhost)
+dashboard-password-guard.ts   Dev server: mật khẩu (Basic Auth) khi public qua tunnel
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
 src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
