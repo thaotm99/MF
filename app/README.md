@@ -81,6 +81,8 @@ Copy file `.csv` vào `app/candles/` rồi bấm **Tải lại nến**. Tên fil
 - Giờ trên chart là giờ server MT5 (UTC+0), cùng hệ với báo cáo.
 - Mã được so khớp cả khi khác hậu tố (`XAUUSDc` ↔ `XAUUSD`).
 
+- **Đường vào → ra** (bật/tắt bằng checkbox): mũi tên nét đứt từ điểm vào (nến vào, giá vào) tới điểm thoát (nến ra, giá ra), lãi xanh / lỗ đỏ; lệnh đang chọn vẽ đậm, các lệnh khác mờ đi. Tự vẽ lại khi cuộn / zoom / kéo thang giá.
+
 ## Đánh giá lệnh (price action)
 
 Tab **Đánh giá lệnh** đọc nến (file trong `app/candles/`, mặc định khung M15) **đã đóng trước giờ vào lệnh** — không dùng
@@ -259,6 +261,7 @@ src/utils/trade-auto-tags.ts         Rule nhãn tự động
 src/utils/ai-trade-context.ts        Soạn bối cảnh lệnh gửi cho Claude Code
 src/utils/ai-overall-rows.ts         Bảng toàn bộ lệnh (TSV) + thông tin chung cho phân tích tổng thể
 src/composables/use-ai-analysis-run.ts  Trạng thái 1 lượt phân tích AI (tiến trình, dừng, lỗi)
+src/composables/use-trade-connector-lines.ts  Toạ độ mũi tên vào → ra phủ lên chart giá
 src/utils/simple-markdown.ts         Markdown tối giản → HTML an toàn (hiển thị câu trả lời AI)
 src/api/ai-analysis-client.ts        Gọi endpoint AI, đọc kết quả stream
 src/composables/use-trade-auto-tags.ts  Tính nhãn tự động cho trang Chart giá

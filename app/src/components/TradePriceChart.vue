@@ -17,6 +17,8 @@ import TradeTagFilterSelect from './TradeTagFilterSelect.vue'
 import AiTradeAnalysis from './AiTradeAnalysis.vue'
 import { useReportsStore } from '../stores/reports'
 import { buildAiTradeContext } from '../utils/ai-trade-context'
+import { useTradeConnectorLines } from '../composables/use-trade-connector-lines'
+import { MARKER_COLORS } from '../utils/trade-chart-markers'
 import { useTradeAutoTags } from '../composables/use-trade-auto-tags'
 import { useTradeJournalStore } from '../stores/trade-journal'
 import { matchesTagFilter } from '../utils/trade-journal-stats'
@@ -133,6 +135,13 @@ const loadingData = ref(false)
 const selectedId = ref<string | undefined>()
 const selected = computed(() => trades.value.find((p) => p.id === selectedId.value))
 
+/** Mũi tên nét đứt vào → ra (lãi xanh / lỗ đỏ) */
+const showConnectors = ref(true)
+const connectors = useTradeConnectorLines({
+  chart: () => chart, series: () => series, container: el, trades, tfSec,
+  candleTimes: () => candleTimes, selectedId, enabled: showConnectors,
+})
+
 onMounted(() => {
   void journal.ensureLoaded()
   if (!el.value) return
@@ -151,11 +160,13 @@ onMounted(() => {
     wickUpColor: 'rgba(34, 160, 107, 0.6)', wickDownColor: 'rgba(201, 55, 44, 0.6)',
   })
   chart.subscribeCrosshairMove(onCrosshair)
+  connectors.attach()
   if (candles.state === 'idle') candles.list()
   void render()
 })
 onBeforeUnmount(() => {
   chart?.unsubscribeCrosshairMove(onCrosshair)
+  connectors.detach()
   chart?.remove()
   chart = null
 })
@@ -178,6 +189,7 @@ async function render() {
   if (!series) return
   setCandles()
   candleTimes = new Set(data.value.map((c) => c.time))
+  connectors.redraw()
   const focus = pendingFocus.value
   pendingFocus.value = undefined
   if (focus) {
@@ -319,6 +331,7 @@ watch(() => [props.from, props.to], fitToRange)
           :class="{ on: result === o.id }" @click="result = o.id">{{ o.label }}</button>
       </div>
       <TradeTagFilterSelect v-model="tagFilter" />
+      <label class="check"><input v-model="showConnectors" type="checkbox" /> Đường vào → ra</label>
       <label class="check"><input v-model="showSwings" type="checkbox" /> Cấu trúc (HH/HL/LH/LL)</label>
       <button class="btn small" type="button" @click="candles.list()">Tải lại nến</button>
       <span class="legend">
@@ -338,6 +351,19 @@ watch(() => [props.from, props.to], fitToRange)
 
     <div class="chart-box" :class="{ dim: loadingData }">
       <div ref="el" class="chart" role="img" :aria-label="`Chart nến ${symbol} ${timeframe} với điểm vào/ra lệnh`" />
+      <!-- Mũi tên nét đứt vào → ra, phủ lên vùng vẽ của chart (không chặn chuột) -->
+      <svg v-if="showConnectors && connectors.lines.value.length" class="connectors" :width="connectors.width.value" :height="connectors.height.value" aria-hidden="true">
+        <defs>
+          <marker v-for="(c, k) in [MARKER_COLORS.win, MARKER_COLORS.loss]" :id="`cn-arrow-${k}`" :key="k" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="10" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" :fill="c" /></marker>
+        </defs>
+        <g v-for="l in connectors.lines.value" :key="l.id" :opacity="selectedId && !l.selected ? 0.5 : 1">
+          <!-- viền trắng mờ để đường nét đứt nổi trên thân nến -->
+          <line :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" stroke="#fff" :stroke-width="l.selected ? 5 : 4" stroke-opacity="0.7" stroke-linecap="round" />
+          <line :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" :stroke="l.win ? MARKER_COLORS.win : MARKER_COLORS.loss" :stroke-width="l.selected ? 2.4 : 1.7"
+            stroke-dasharray="6 4" :marker-end="`url(#cn-arrow-${l.win ? 0 : 1})`" />
+        </g>
+      </svg>
       <div v-if="tip" class="tip" :style="{ left: `${Math.min(tip.x + 14, (el?.clientWidth ?? 600) - 230)}px`, top: `${Math.max(tip.y - 10, 4)}px` }">
         <div v-for="r in tip.rows" :key="r.key" class="tip-row">
           <span class="line-key" :style="{ background: r.color }" />
@@ -380,6 +406,7 @@ watch(() => [props.from, props.to], fitToRange)
 .chart-box { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: opacity .2s; }
 .chart-box.dim { opacity: .55; }
 .chart { height: 440px; width: 100%; }
+.connectors { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; overflow: hidden; }
 .tip {
   position: absolute; z-index: 3; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(20, 29, 34, .12); font-size: 12px; max-width: 260px;
