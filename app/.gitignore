@@ -29,6 +29,9 @@ candles/*
 journal/*
 !journal/.gitkeep
 
+# Kết quả phân tích AI (Claude Code) — dữ liệu cá nhân, không commit
+ai-analyses/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

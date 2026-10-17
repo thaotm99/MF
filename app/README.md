@@ -156,6 +156,23 @@ tính lại theo khung đang chọn (trang Đánh giá lệnh) hoặc M15 vào l
 - Trang Đánh giá lệnh có bảng **Nhãn tự động** (thắng/thua theo nhãn); cả hai trang lọc được theo nhãn tự động lẫn nhãn của bạn.
 - "Tin tức", "Đúng setup", "Sai cấu trúc" vẫn tự gán (chưa có lịch tin; là đánh giá chủ quan).
 
+## Phân tích lệnh bằng AI (Claude Code)
+
+Trong ô **Nhãn & ghi chú** của lệnh đang chọn trên Chart giá có nút **Phân tích bằng AI**. Dashboard gọi **Claude Code trên máy này**
+(`claude -p`, dùng tài khoản đã đăng nhập, không cần API key) để giải thích lệnh, có đối chiếu code của bot.
+
+- **Cần**: cài và đăng nhập Claude Code trên máy chạy `npm run dev` (lệnh `claude` có trong PATH, hoặc đặt `DASHBOARD_CLAUDE_BIN` trong `.env`).
+  Model tuỳ chọn: `DASHBOARD_CLAUDE_MODEL`.
+- **Bot của lệnh**: lấy theo tên tài khoản trong báo cáo, `MF_xx` → `test/…MFxx….mq5` (bỏ qua file gộp; nhiều bản thì lấy bản sửa gần nhất).
+- **Dữ liệu gửi kèm**: thông tin lệnh, comment, bối cảnh lúc vào / trước khi đóng, MAE/MFE, nhãn tự động, nhãn và ghi chú của bạn,
+  nến quanh lệnh (40 nến trước giờ vào → 5 nến sau giờ đóng). Không gửi thống kê lịch sử.
+- **Định hướng**: AI phân tích **định tính** (vì sao vào / thoát, bot có chạy đúng code không, nghi lỗi ở đâu) và được dặn
+  **không** đề xuất tham số / ngưỡng mới từ dữ liệu lịch sử. Câu trả lời chỉ là ý kiến tham khảo, AI có thể sai.
+- **An toàn**: chỉ dùng khi mở dashboard **trực tiếp trên máy**, vì request qua tunnel / proxy bị chặn (403) kể cả khi có mật khẩu.
+  Claude Code chạy với `--restricted`, chỉ có tool đọc (Read / Grep / Glob), không đọc được `.env`, không có MCP, mỗi lúc chỉ chạy 1 lượt, tối đa 5 phút.
+- **Lưu lại**: kết quả lưu ở `app/ai-analyses/<ticket>.json` (không commit), mở lại không cần chạy lại. Bấm **Phân tích lại** để chạy lại, có thể thêm câu hỏi.
+- Mỗi lần mất khoảng 10–60 giây và tính vào giới hạn sử dụng của gói Claude.
+
 ## Nhật ký lệnh (nhãn & ghi chú)
 
 - Gắn nhãn (Đúng setup, Sai cấu trúc, Vào sớm/muộn, Thoát sớm/muộn, Tin tức, Khác, hoặc nhãn riêng) và ghi chú cho từng lệnh:
@@ -197,6 +214,8 @@ tính lại theo khung đang chọn (trang Đánh giá lệnh) hoặc M15 vào l
 ```
 local-folder-dev-endpoint.ts  Dev server: liệt kê / đọc file trong reports/ và candles/ (chỉ localhost)
 trade-journal-dev-endpoint.ts Dev server: đọc / ghi journal/trade-journal.json (chỉ localhost)
+ai-analysis-dev-endpoint.ts   Dev server: chạy Claude Code phân tích lệnh, lưu ai-analyses/ (chỉ trên máy, chặn qua tunnel)
+ai-analysis-prompt.ts         Prompt hệ thống + soạn prompt cho phân tích AI
 mql5/ExportCandlesCsv.mq5     Script MT5 xuất nến M1/M5/M15 ra CSV
 dashboard-password-guard.ts   Dev server: mật khẩu (Basic Auth) khi public qua tunnel
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
@@ -218,6 +237,9 @@ src/utils/setup-combination-finder.ts  Tổ hợp 2–3 điều kiện tốt/x�
 src/utils/trade-excursion.ts         MAE / MFE từng lệnh + tóm tắt
 src/utils/trade-journal-stats.ts     Thống kê / lọc theo nhãn
 src/utils/trade-auto-tags.ts         Rule nhãn tự động
+src/utils/ai-trade-context.ts        Soạn bối cảnh lệnh gửi cho Claude Code
+src/utils/simple-markdown.ts         Markdown tối giản → HTML an toàn (hiển thị câu trả lời AI)
+src/api/ai-analysis-client.ts        Gọi endpoint AI, đọc kết quả stream
 src/composables/use-trade-auto-tags.ts  Tính nhãn tự động cho trang Chart giá
 src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng lệnh
 src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Glossary, Reports)
@@ -231,5 +253,6 @@ src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangeP
                               PnlBreakdownCharts + PnlBarChart (tab Biểu đồ),
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
                               TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
-                              TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn)
+                              TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn),
+                              AiTradeAnalysis (phân tích AI)
 ```

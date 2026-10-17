@@ -5,8 +5,9 @@ import { useCandlesStore } from '../stores/candles'
 import { autoTagsFor, type AutoTag } from '../utils/trade-auto-tags'
 import { symbolMatches } from '../utils/trade-chart-markers'
 import { DEFAULT_EVALUATION_OPTIONS, evaluateTrade } from '../utils/trade-evaluation'
-import { evaluateExcursion } from '../utils/trade-excursion'
-import { evaluateExit } from '../utils/trade-exit-evaluation'
+import { evaluateExcursion, type Excursion } from '../utils/trade-excursion'
+import { evaluateExit, type ExitEvaluation } from '../utils/trade-exit-evaluation'
+import type { TradeEvaluation } from '../utils/trade-evaluation'
 
 /** Khung ưu tiên — giống mặc định của trang Đánh giá lệnh */
 const ENTRY_PREFER: CandleTimeframe[] = ['M15', 'M5', 'M30', 'H1', 'M1']
@@ -20,6 +21,8 @@ const EXIT_BARS = 5
 export function useTradeAutoTags(positions: Ref<Mt5Position[]>) {
   const candles = useCandlesStore()
   const tags = shallowRef(new Map<string, AutoTag[]>())
+  /** Đánh giá chi tiết từng lệnh (dùng soạn bối cảnh cho phân tích AI) */
+  const details = shallowRef(new Map<string, { ev: TradeEvaluation; exit: ExitEvaluation; exc: Excursion; entryTf: CandleTimeframe; exitTf: CandleTimeframe }>())
   const loading = ref(false)
   /** Khung đã dùng, theo mã — để hiện trong mô tả */
   const used = ref<{ symbol: string; entry: CandleTimeframe; exit: CandleTimeframe }[]>([])
@@ -40,22 +43,21 @@ export function useTradeAutoTags(positions: Ref<Mt5Position[]>) {
     const id = ++run
     loading.value = true
     const out = new Map<string, AutoTag[]>()
+    const det = new Map<string, { ev: TradeEvaluation; exit: ExitEvaluation; exc: Excursion; entryTf: CandleTimeframe; exitTf: CandleTimeframe }>()
     try {
-      for (const { symbol, entry, exit } of plan.value) {
+      for (const { symbol, entry, exit: exitFile } of plan.value) {
         const trades = positions.value.filter((p) => symbolMatches(p.symbol, symbol))
         if (!trades.length) continue
-        const [ec, xc]: Candle[][] = await Promise.all([candles.load(entry.name), candles.load(exit.name)])
+        const [ec, xc]: Candle[][] = await Promise.all([candles.load(entry.name), candles.load(exitFile.name)])
         if (id !== run) return
         const eSec = TIMEFRAME_SECONDS[entry.timeframe]
-        const xSec = TIMEFRAME_SECONDS[exit.timeframe]
+        const xSec = TIMEFRAME_SECONDS[exitFile.timeframe]
         for (const p of trades) {
-          out.set(p.id, autoTagsFor({
-            p,
-            ev: evaluateTrade(p, ec, eSec, DEFAULT_EVALUATION_OPTIONS),
-            exit: evaluateExit(p, xc, xSec, EXIT_BARS),
-            exc: evaluateExcursion(p, xc, xSec),
-            options: DEFAULT_EVALUATION_OPTIONS,
-          }))
+          const ev = evaluateTrade(p, ec, eSec, DEFAULT_EVALUATION_OPTIONS)
+          const exit = evaluateExit(p, xc, xSec, EXIT_BARS)
+          const exc = evaluateExcursion(p, xc, xSec)
+          out.set(p.id, autoTagsFor({ p, ev, exit, exc, options: DEFAULT_EVALUATION_OPTIONS }))
+          det.set(p.id, { ev, exit, exc, entryTf: entry.timeframe, exitTf: exitFile.timeframe })
         }
       }
     } catch {
@@ -64,10 +66,11 @@ export function useTradeAutoTags(positions: Ref<Mt5Position[]>) {
     if (id !== run) return
     used.value = plan.value.map((x) => ({ symbol: x.symbol, entry: x.entry.timeframe, exit: x.exit.timeframe }))
     tags.value = out
+    details.value = det
     loading.value = false
   }
 
   watch([plan, positions], compute)
   onMounted(() => void compute())
-  return { tags, loading, used }
+  return { tags, details, loading, used }
 }

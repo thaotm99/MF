@@ -14,6 +14,9 @@ import TradeChartTradeList from './TradeChartTradeList.vue'
 import TradeJournalEditor from './TradeJournalEditor.vue'
 import AutoTagLegend from './AutoTagLegend.vue'
 import TradeTagFilterSelect from './TradeTagFilterSelect.vue'
+import AiTradeAnalysis from './AiTradeAnalysis.vue'
+import { useReportsStore } from '../stores/reports'
+import { buildAiTradeContext } from '../utils/ai-trade-context'
 import { useTradeAutoTags } from '../composables/use-trade-auto-tags'
 import { useTradeJournalStore } from '../stores/trade-journal'
 import { matchesTagFilter } from '../utils/trade-journal-stats'
@@ -91,9 +94,23 @@ const result = ref<ResultFilter>('all')
 /** Nhãn tự động (khung M15 / M5 mặc định) + nhãn của bạn; lọc theo nhãn */
 const journal = useTradeJournalStore()
 const allPositions = computed(() => props.positions)
-const { tags: autoTags, used: autoTfs } = useTradeAutoTags(allPositions)
+const { tags: autoTags, details: autoDetails, used: autoTfs } = useTradeAutoTags(allPositions)
 const tagFilter = ref('')
 const autoTfText = computed(() => autoTfs.value.find((u) => u.symbol === symbol.value))
+
+/** Phân tích AI: tên tài khoản chứa lệnh (MF_xx → file bot) + bối cảnh lệnh soạn khi bấm */
+const reports = useReportsStore()
+const selectedAccount = computed(() => (selected.value ? reports.accounts.find((a) => a.positions.some((p) => p.id === selected.value!.id)) : undefined))
+function aiContext(): string {
+  const p = selected.value!
+  const d = autoDetails.value.get(p.id)
+  return buildAiTradeContext({
+    p, accountLabel: selectedAccount.value?.label ?? '', currency: props.currency,
+    ev: d?.ev, exit: d?.exit, exc: d?.exc, entryTf: d?.entryTf, exitTf: d?.exitTf,
+    autoTags: autoTags.value.get(p.id), journal: journal.entries[p.id],
+    candles: data.value, timeframe: timeframe.value, tfSec: tfSec.value,
+  })
+}
 
 const trades = computed(() =>
   props.positions
@@ -335,6 +352,7 @@ watch(() => [props.from, props.to], fitToRange)
       <h3>Nhãn &amp; ghi chú · {{ selected.type === 'buy' ? 'Buy' : 'Sell' }} {{ selected.openTime.slice(8, 10) }}/{{ selected.openTime.slice(5, 7) }} {{ selected.openTime.slice(11, 16) }}
         <b :class="selected.netProfit >= 0 ? 'pos' : 'neg'">{{ money(selected.netProfit, { sign: true }) }} {{ currency }}</b></h3>
       <TradeJournalEditor :position="selected" :auto-tags="autoTags.get(selected.id) ?? []" />
+      <AiTradeAnalysis :position-id="selected.id" :account-label="selectedAccount?.label ?? ''" :build-context="aiContext" />
     </section>
 
     <AutoTagLegend :entry-timeframe="autoTfText?.entry" :exit-timeframe="autoTfText?.exit" />

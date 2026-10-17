@@ -20,7 +20,8 @@ function isLoopback(req: IncomingMessage) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
 }
 
-function viaProxyOrRemote(req: IncomingMessage) {
+/** Request đi qua tunnel/proxy hoặc từ máy khác (dùng chung cho các endpoint chỉ cho phép trên máy này) */
+export function viaProxyOrRemote(req: IncomingMessage) {
   return !isLoopback(req) || PROXY_HEADERS.some((h) => req.headers[h] !== undefined)
 }
 
