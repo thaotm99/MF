@@ -31,6 +31,7 @@ const NAV = [
       { to: '/evaluation', label: 'Đánh giá lệnh', icon: 'M9 11l3 3 8-8M20 12v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1h11' },
       { to: '/breakdown', label: 'Biểu đồ', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
       { to: '/trades', label: 'Lệnh đã đóng', icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' },
+      { to: '/ai', label: 'Phân tích AI', icon: 'M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z' },
       { to: '/compare', label: 'So sánh tài khoản', icon: 'M3 3h7v18H3zM14 8h7v13h-7z' },
     ],
   },

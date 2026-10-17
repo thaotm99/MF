@@ -71,6 +71,10 @@ export function useTradeAutoTags(positions: Ref<Mt5Position[]>) {
   }
 
   watch([plan, positions], compute)
-  onMounted(() => void compute())
+  onMounted(() => {
+    // Trang chưa tải danh sách file nến (ví dụ mở thẳng trang Phân tích AI) → tải luôn
+    if (candles.state === 'idle') void candles.list()
+    void compute()
+  })
   return { tags, details, loading, used }
 }

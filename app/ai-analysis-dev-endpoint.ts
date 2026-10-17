@@ -1,33 +1,34 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { viaProxyOrRemote } from './dashboard-password-guard'
-import { AI_SYSTEM_PROMPT, buildAiPrompt, type AiAnalyzeRequest } from './ai-analysis-prompt'
+import { createClaudeRunner } from './ai-analysis-claude-runner'
+import { buildAiOverallPrompt, buildAiPrompt, type AiAnalyzeRequest, type AiOverallRequest } from './ai-analysis-prompt'
 
 /**
- * Phân tích lệnh bằng Claude Code chạy trên máy này (`claude -p`, dùng tài khoản đã đăng nhập, không cần API key).
+ * Phân tích bằng Claude Code chạy trên máy này (`claude -p`, dùng tài khoản đã đăng nhập, không cần API key).
  *
- * - POST /__ai-analyze          body AiAnalyzeRequest → stream NDJSON: {kind:'meta'|'tool'|'text'|'done'|'error', …}
- * - GET  /__ai-analyze/<id>     → bản phân tích đã lưu (app/ai-analyses/<id>.json) hoặc 404
+ * - POST /__ai-analyze             1 lệnh  → stream NDJSON; lưu app/ai-analyses/<ticket>.json
+ * - GET  /__ai-analyze/<ticket>    bản phân tích 1 lệnh đã lưu
+ * - POST /__ai-analyze-all         toàn bộ lệnh trong kỳ → ghi bảng lệnh ra app/ai-analyses/inputs/<id>.tsv cho Claude đọc;
+ *                                  lưu app/ai-analyses/overall/<id>.json
+ * - GET  /__ai-analyze-all/list    danh sách bản phân tích tổng thể đã lưu
+ * - GET  /__ai-analyze-all/<id>    bản phân tích tổng thể đã lưu
  *
- * An toàn: chỉ nhận request trực tiếp trên máy (chặn qua tunnel/proxy kể cả có mật khẩu), mỗi lúc 1 lượt,
- * Claude Code chỉ có tool đọc (Read / Grep / Glob), không đọc .env, giới hạn thời gian.
+ * Chỉ nhận request trực tiếp trên máy (chặn qua tunnel/proxy kể cả có mật khẩu), mỗi lúc 1 lượt.
  */
-const MAX_BODY = 64 * 1024
-const TIMEOUT_MS = 5 * 60 * 1000
-const SAFE_ID = /^[\w-]{1,40}$/
+const SAFE_ID = /^[\w-]{1,60}$/
 
 interface Options { bin?: string; model?: string }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, max: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0
     const chunks: Buffer[] = []
     req.on('data', (c: Buffer) => {
       size += c.length
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(new Error('too large'))
         req.destroy()
       } else chunks.push(c)
@@ -60,175 +61,134 @@ async function findBotFile(repoRoot: string, accountLabel: string): Promise<stri
   return `test/${withTime[0].f}`
 }
 
-function isValidRequest(v: unknown): v is AiAnalyzeRequest {
+const str = (v: unknown, max: number) => typeof v === 'string' && v.length <= max
+function isTradeRequest(v: unknown): v is AiAnalyzeRequest {
   const r = v as AiAnalyzeRequest
-  return !!r && typeof r === 'object' && typeof r.positionId === 'string' && SAFE_ID.test(r.positionId)
-    && typeof r.accountLabel === 'string' && r.accountLabel.length <= 100
-    && typeof r.context === 'string' && r.context.length <= 40_000
-    && (r.question === undefined || (typeof r.question === 'string' && r.question.length <= 1000))
+  return !!r && typeof r === 'object' && SAFE_ID.test(String(r.positionId)) && str(r.accountLabel, 100)
+    && str(r.context, 40_000) && (r.question === undefined || str(r.question, 1000))
+}
+function isOverallRequest(v: unknown): v is AiOverallRequest {
+  const r = v as AiOverallRequest
+  return !!r && typeof r === 'object' && SAFE_ID.test(String(r.id)) && str(r.accountLabel, 100) && str(r.period, 100)
+    && str(r.summary, 20_000) && str(r.rows, 3_000_000) && (r.question === undefined || str(r.question, 2000))
+}
+
+function text(res: ServerResponse, status: number, msg: string) {
+  res.statusCode = status
+  res.setHeader('content-type', 'text/plain; charset=utf-8')
+  res.end(msg)
+}
+async function sendJsonFile(res: ServerResponse, file: string) {
+  try {
+    const data = await fs.readFile(file, 'utf8')
+    res.setHeader('content-type', 'application/json')
+    res.end(data)
+  } catch {
+    // Chưa có bản lưu → null (không dùng 404 để console trình duyệt khỏi báo lỗi)
+    res.setHeader('content-type', 'application/json')
+    res.end('null')
+  }
 }
 
 export function aiAnalysisDevEndpoint(opts: Options = {}): Plugin {
-  const bin = opts.bin || 'claude'
-  let appRoot = ''
   let repoRoot = ''
   let outDir = ''
-  let running: ChildProcess | null = null
-  /** Bản Claude Code cũ chưa có --restricted → bỏ flag đó (vẫn giới hạn bằng --tools + dontAsk) */
-  let supportsRestricted: boolean | undefined
+  let runner: ReturnType<typeof createClaudeRunner>
 
-  function claudeArgs(): string[] {
-    if (supportsRestricted === undefined) {
-      const help = spawnSync(bin, ['--help'], { encoding: 'utf8', timeout: 15_000 })
-      supportsRestricted = (help.stdout ?? '').includes('--restricted')
-    }
-    return [
-      '-p',
-      '--output-format', 'stream-json', '--verbose',
-      ...(supportsRestricted ? ['--restricted'] : []),
-      '--strict-mcp-config',
-      '--no-session-persistence',
-      '--tools', 'Read', 'Grep', 'Glob',
-      '--allowedTools', 'Read', 'Grep', 'Glob',
-      '--disallowedTools', 'Read(**/.env*)', 'Read(**/node_modules/**)',
-      '--permission-mode', 'dontAsk',
-      '--append-system-prompt', AI_SYSTEM_PROMPT,
-      ...(opts.model ? ['--model', opts.model] : []),
-    ]
-  }
-
-  async function analyze(req: IncomingMessage, res: ServerResponse) {
+  async function parse<T>(req: IncomingMessage, res: ServerResponse, max: number, ok: (v: unknown) => v is T): Promise<T | null> {
     let body: unknown
     try {
-      body = JSON.parse(await readBody(req))
+      body = JSON.parse(await readBody(req, max))
     } catch {
-      res.statusCode = 400
-      return res.end()
+      text(res, 400, 'Dữ liệu gửi lên không hợp lệ hoặc quá lớn.')
+      return null
     }
-    if (!isValidRequest(body)) {
-      res.statusCode = 400
-      return res.end()
+    if (!ok(body)) {
+      text(res, 400, 'Dữ liệu gửi lên không hợp lệ.')
+      return null
     }
-    if (running) {
-      res.statusCode = 429
-      res.setHeader('content-type', 'text/plain; charset=utf-8')
-      return res.end('Đang có một phân tích khác chạy, chờ xong rồi thử lại.')
+    if (runner.busy()) {
+      text(res, 429, 'Đang có một phân tích khác chạy, chờ xong rồi thử lại.')
+      return null
     }
+    return body
+  }
 
+  async function analyzeTrade(req: IncomingMessage, res: ServerResponse) {
+    const body = await parse(req, res, 64 * 1024, isTradeRequest)
+    if (!body) return
     const botFile = await findBotFile(repoRoot, body.accountLabel)
-    const prompt = buildAiPrompt(body, botFile)
-    res.statusCode = 200
-    res.setHeader('content-type', 'application/x-ndjson; charset=utf-8')
-    res.setHeader('x-accel-buffering', 'no')
-    const send = (o: Record<string, unknown>) => res.write(`${JSON.stringify(o)}\n`)
-    send({ kind: 'meta', botFile: botFile ?? null })
+    runner.run(res, buildAiPrompt(body, botFile), 5 * 60_000, { botFile: botFile ?? null }, async (markdown, meta) => {
+      const saved = { positionId: body.positionId, accountLabel: body.accountLabel, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta }
+      await fs.mkdir(outDir, { recursive: true })
+      await fs.writeFile(path.join(outDir, `${body.positionId}.json`), JSON.stringify(saved, null, 1), 'utf8')
+      return saved
+    })
+  }
 
-    let child: ChildProcess
+  async function analyzeAll(req: IncomingMessage, res: ServerResponse) {
+    const body = await parse(req, res, 3_200_000, isOverallRequest)
+    if (!body) return
+    const botFile = await findBotFile(repoRoot, body.accountLabel)
+    // Bảng lệnh để Claude Code tự đọc (đường dẫn tương đối với repo)
+    const inputRel = `app/ai-analyses/inputs/${body.id}.tsv`
+    await fs.mkdir(path.join(outDir, 'inputs'), { recursive: true })
+    await fs.writeFile(path.join(repoRoot, inputRel), body.rows, 'utf8')
+    runner.run(res, buildAiOverallPrompt(body, botFile, inputRel), 10 * 60_000, { botFile: botFile ?? null }, async (markdown, meta) => {
+      const saved = { id: body.id, accountLabel: body.accountLabel, period: body.period, tradeCount: body.tradeCount ?? null, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta }
+      await fs.mkdir(path.join(outDir, 'overall'), { recursive: true })
+      await fs.writeFile(path.join(outDir, 'overall', `${body.id}.json`), JSON.stringify(saved, null, 1), 'utf8')
+      return saved
+    })
+  }
+
+  async function listOverall(res: ServerResponse) {
+    const dir = path.join(outDir, 'overall')
+    let items: unknown[] = []
     try {
-      child = spawn(bin, claudeArgs(), { cwd: repoRoot, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env } })
-    } catch (e) {
-      send({ kind: 'error', message: `Không chạy được Claude Code: ${String(e)}` })
-      return res.end()
+      const names = (await fs.readdir(dir)).filter((f) => f.endsWith('.json'))
+      items = (await Promise.all(names.map(async (f) => {
+        try {
+          const d = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'))
+          return { id: d.id, accountLabel: d.accountLabel, period: d.period, tradeCount: d.tradeCount, question: d.question, createdAt: d.createdAt }
+        } catch {
+          return null
+        }
+      }))).filter(Boolean)
+    } catch {
+      // chưa có
     }
-    running = child
-    const timer = setTimeout(() => child.kill('SIGTERM'), TIMEOUT_MS)
-    // Trình duyệt đóng / bấm dừng → dừng Claude Code
-    res.on('close', () => !child.killed && child.exitCode === null && child.kill('SIGTERM'))
-
-    let finalText = ''
-    let streamedText = ''
-    let stderr = ''
-    let buf = ''
-    let meta: Record<string, unknown> = {}
-    child.stdout!.on('data', (chunk: Buffer) => {
-      buf += chunk.toString('utf8')
-      let nl: number
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl).trim()
-        buf = buf.slice(nl + 1)
-        if (!line) continue
-        let ev: any
-        try {
-          ev = JSON.parse(line)
-        } catch {
-          continue
-        }
-        if (ev.type === 'assistant') {
-          for (const c of ev.message?.content ?? []) {
-            if (c.type === 'text' && c.text) {
-              streamedText += c.text
-              send({ kind: 'text', text: c.text })
-            } else if (c.type === 'tool_use') {
-              send({ kind: 'tool', name: c.name, target: c.input?.file_path ?? c.input?.pattern ?? c.input?.path ?? '' })
-            }
-          }
-        } else if (ev.type === 'result') {
-          finalText = typeof ev.result === 'string' ? ev.result : ''
-          meta = { costUsd: ev.total_cost_usd, durationMs: ev.duration_ms, turns: ev.num_turns, isError: ev.is_error }
-        }
-      }
-    })
-    child.stderr!.on('data', (c: Buffer) => (stderr = (stderr + c.toString('utf8')).slice(-2000)))
-    child.on('error', (e) => {
-      send({ kind: 'error', message: `Không chạy được Claude Code (${bin}): ${e.message}. Kiểm tra đã cài và đăng nhập Claude Code trên máy này.` })
-    })
-    child.on('close', async (code) => {
-      clearTimeout(timer)
-      running = null
-      const markdown = (finalText || streamedText).trim()
-      if (code === 0 && markdown && !meta.isError) {
-        const saved = { positionId: body.positionId, accountLabel: body.accountLabel, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta }
-        try {
-          await fs.mkdir(outDir, { recursive: true })
-          await fs.writeFile(path.join(outDir, `${body.positionId}.json`), JSON.stringify(saved, null, 1), 'utf8')
-        } catch {
-          // Không lưu được vẫn trả kết quả
-        }
-        send({ kind: 'done', ...saved })
-      } else if (!res.writableEnded) {
-        send({ kind: 'error', message: `Claude Code dừng (mã ${code ?? 'bị huỷ'}). ${stderr.trim() || markdown}`.slice(0, 1500) })
-      }
-      res.end()
-    })
-    child.stdin!.end(prompt)
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(items))
   }
 
   return {
     name: 'ai-analysis-dev-endpoint',
     configResolved(config) {
-      appRoot = config.root
-      repoRoot = path.resolve(appRoot, '..')
-      outDir = path.join(appRoot, 'ai-analyses')
+      repoRoot = path.resolve(config.root, '..')
+      outDir = path.join(config.root, 'ai-analyses')
+      runner = createClaudeRunner({ bin: opts.bin || 'claude', model: opts.model, cwd: repoRoot })
     },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = (req.url ?? '').split('?')[0]
-        if (url !== '/__ai-analyze' && !url.startsWith('/__ai-analyze/')) return next()
+        const trade = url === '/__ai-analyze' || url.startsWith('/__ai-analyze/')
+        const all = url === '/__ai-analyze-all' || url.startsWith('/__ai-analyze-all/')
+        if (!trade && !all) return next()
         res.setHeader('cache-control', 'no-store')
         // Chỉ dùng trên máy này: chặn mọi request qua tunnel / proxy / máy khác
-        if (viaProxyOrRemote(req)) {
-          res.statusCode = 403
-          res.setHeader('content-type', 'text/plain; charset=utf-8')
-          return res.end('Phân tích AI chỉ dùng được khi mở dashboard trực tiếp trên máy chạy npm run dev.')
+        if (viaProxyOrRemote(req)) return text(res, 403, 'Phân tích AI chỉ dùng được khi mở dashboard trực tiếp trên máy chạy npm run dev.')
+
+        if (req.method === 'POST' && url === '/__ai-analyze') return analyzeTrade(req, res)
+        if (req.method === 'POST' && url === '/__ai-analyze-all') return analyzeAll(req, res)
+        if (req.method === 'GET' && url === '/__ai-analyze-all/list') return listOverall(res)
+        if (req.method === 'GET') {
+          const prefix = trade ? '/__ai-analyze/' : '/__ai-analyze-all/'
+          const id = decodeURIComponent(url.slice(prefix.length))
+          if (!SAFE_ID.test(id)) return text(res, 400, '')
+          return sendJsonFile(res, trade ? path.join(outDir, `${id}.json`) : path.join(outDir, 'overall', `${id}.json`))
         }
-        if (req.method === 'POST' && url === '/__ai-analyze') return analyze(req, res)
-        if (req.method === 'GET' && url.startsWith('/__ai-analyze/')) {
-          const id = decodeURIComponent(url.slice('/__ai-analyze/'.length))
-          if (!SAFE_ID.test(id)) {
-            res.statusCode = 400
-            return res.end()
-          }
-          try {
-            const data = await fs.readFile(path.join(outDir, `${id}.json`), 'utf8')
-            res.setHeader('content-type', 'application/json')
-            return res.end(data)
-          } catch {
-            res.statusCode = 404
-            return res.end()
-          }
-        }
-        res.statusCode = 405
-        res.end()
+        text(res, 405, '')
       })
     },
   }

@@ -11,6 +11,19 @@ export interface AiAnalysis {
   turns?: number
 }
 
+export interface AiOverallAnalysis {
+  id: string
+  accountLabel: string
+  period: string
+  tradeCount: number | null
+  botFile: string | null
+  question: string
+  markdown: string
+  createdAt: string
+  costUsd?: number
+  durationMs?: number
+}
+
 export type AiEvent =
   | { kind: 'meta'; botFile: string | null }
   | { kind: 'tool'; name: string; target: string }
@@ -21,16 +34,25 @@ export type AiEvent =
 export async function getSavedAnalysis(positionId: string): Promise<AiAnalysis | null> {
   const r = await fetch(`/__ai-analyze/${encodeURIComponent(positionId)}`, { cache: 'no-store' })
   if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return null
-  return (await r.json()) as AiAnalysis
+  return (await r.json()) as AiAnalysis | null
 }
 
-/** Gửi yêu cầu và đọc kết quả dạng NDJSON từng dòng */
+async function getJson<T>(url: string): Promise<T | null> {
+  const r = await fetch(url, { cache: 'no-store' })
+  if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return null
+  return (await r.json()) as T
+}
+export const getSavedOverall = (id: string) => getJson<AiOverallAnalysis>(`/__ai-analyze-all/${encodeURIComponent(id)}`)
+export const listSavedOverall = async () => (await getJson<Omit<AiOverallAnalysis, 'markdown'>[]>('/__ai-analyze-all/list')) ?? []
+
+/** Gửi yêu cầu (url: /__ai-analyze hoặc /__ai-analyze-all) và đọc kết quả dạng NDJSON từng dòng */
 export async function runAnalysis(
-  body: { positionId: string; accountLabel: string; context: string; question?: string },
+  url: string,
+  body: unknown,
   onEvent: (e: AiEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const r = await fetch('/__ai-analyze', {
+  const r = await fetch(url, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal,
   })
   if (!r.ok || !r.body) {

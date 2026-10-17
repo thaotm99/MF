@@ -4,8 +4,11 @@
  */
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+/** Ticket MT5 (#123456789) → link mở lệnh trên Chart giá (chỉ chữ số → an toàn) */
+const ticketLinks = (html: string) => html.replace(/#(\d{6,12})\b/g, '<a href="/chart?trade=$1" data-trade="$1">#$1</a>')
+
 function inline(s: string): string {
-  return esc(s)
+  return ticketLinks(esc(s))
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')

@@ -21,6 +21,7 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 | Đánh giá lệnh | `/evaluation` | Bối cảnh price action từng lệnh + thắng/thua theo yếu tố |
 | Biểu đồ | `/breakdown` | Lãi/lỗ theo giờ, chiều, khối lượng, mã, ATR, ER5 + bản đồ nhiệt |
 | Lệnh đã đóng | `/trades` | Danh sách deal đóng |
+| Phân tích AI | `/ai` | Claude Code trên máy phân tích tổng thể toàn bộ lệnh trong kỳ của 1 bot (định tính) |
 | So sánh tài khoản | `/compare` | Bảng chỉ số mọi tài khoản |
 | Thuật ngữ | `/glossary` | Giải thích từng cách phân tích / đánh giá kèm chart minh hoạ (swing, HH/HL, sideway, mẫu nến, ATR, EMA, ER5, PDH/PDL, MAE/MFE, nhãn tự động, RSI theo ebook John Hayden: vùng 80/40–60/20, phân kỳ, MDRP…) |
 | Báo cáo MT5 | `/reports` | File báo cáo, tiền tệ hiển thị, múi giờ |
@@ -173,6 +174,14 @@ Trong ô **Nhãn & ghi chú** của lệnh đang chọn trên Chart giá có nú
 - **Lưu lại**: kết quả lưu ở `app/ai-analyses/<ticket>.json` (không commit), mở lại không cần chạy lại. Bấm **Phân tích lại** để chạy lại, có thể thêm câu hỏi.
 - Mỗi lần mất khoảng 10–60 giây và tính vào giới hạn sử dụng của gói Claude.
 
+**Phân tích tổng thể** — trang **Phân tích AI** (`/ai`): chọn **một** tài khoản + kỳ ở bộ lọc → AI đọc toàn bộ lệnh đóng trong kỳ
+và code bot, mô tả các kiểu lệnh thua / thắng lặp lại (kèm ticket ví dụ), dấu hiệu bot chạy sai code, danh sách ticket nên xem lại
+và giả thuyết cần kiểm chứng bằng forward test — vẫn định tính, không đưa tham số tối ưu.
+
+- Bảng lệnh (mỗi dòng 1 lệnh: dữ liệu lệnh, comment, bối cảnh lúc vào / trước khi đóng, MAE/MFE, nhãn, ghi chú) được ghi ra
+  `app/ai-analyses/inputs/<login>-<từ>-<đến>.tsv` để Claude Code tự đọc; kết quả lưu ở `app/ai-analyses/overall/`, có danh sách "Đã phân tích".
+- Bấm `#ticket` trong câu trả lời để mở lệnh đó trên Chart giá. Mất khoảng 1–5 phút (tối đa 10 phút).
+
 ## Nhật ký lệnh (nhãn & ghi chú)
 
 - Gắn nhãn (Đúng setup, Sai cấu trúc, Vào sớm/muộn, Thoát sớm/muộn, Tin tức, Khác, hoặc nhãn riêng) và ghi chú cho từng lệnh:
@@ -215,7 +224,8 @@ Trong ô **Nhãn & ghi chú** của lệnh đang chọn trên Chart giá có nú
 local-folder-dev-endpoint.ts  Dev server: liệt kê / đọc file trong reports/ và candles/ (chỉ localhost)
 trade-journal-dev-endpoint.ts Dev server: đọc / ghi journal/trade-journal.json (chỉ localhost)
 ai-analysis-dev-endpoint.ts   Dev server: chạy Claude Code phân tích lệnh, lưu ai-analyses/ (chỉ trên máy, chặn qua tunnel)
-ai-analysis-prompt.ts         Prompt hệ thống + soạn prompt cho phân tích AI
+ai-analysis-prompt.ts         Prompt hệ thống + soạn prompt cho phân tích AI (1 lệnh / tổng thể)
+ai-analysis-claude-runner.ts  Chạy claude -p, stream tiến trình NDJSON
 mql5/ExportCandlesCsv.mq5     Script MT5 xuất nến M1/M5/M15 ra CSV
 dashboard-password-guard.ts   Dev server: mật khẩu (Basic Auth) khi public qua tunnel
 src/api/mt5-report-parser.ts  Đọc báo cáo HTML (UTF-16) của MT5
@@ -238,11 +248,13 @@ src/utils/trade-excursion.ts         MAE / MFE từng lệnh + tóm tắt
 src/utils/trade-journal-stats.ts     Thống kê / lọc theo nhãn
 src/utils/trade-auto-tags.ts         Rule nhãn tự động
 src/utils/ai-trade-context.ts        Soạn bối cảnh lệnh gửi cho Claude Code
+src/utils/ai-overall-rows.ts         Bảng toàn bộ lệnh (TSV) + thông tin chung cho phân tích tổng thể
+src/composables/use-ai-analysis-run.ts  Trạng thái 1 lượt phân tích AI (tiến trình, dừng, lỗi)
 src/utils/simple-markdown.ts         Markdown tối giản → HTML an toàn (hiển thị câu trả lời AI)
 src/api/ai-analysis-client.ts        Gọi endpoint AI, đọc kết quả stream
 src/composables/use-trade-auto-tags.ts  Tính nhãn tự động cho trang Chart giá
 src/utils/trade-exit-evaluation.ts   Phân tích N nến trước khi đóng lệnh
-src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, Compare, Glossary, Reports)
+src/views/                    Mỗi trang một view (Overview, PriceChart, Evaluation, Breakdown, Trades, AiAnalysis, Compare, Glossary, Reports)
 src/glossary/                 Nội dung trang Thuật ngữ: kiểu + hàm dựng nến minh hoạ, thuật ngữ theo nhóm
 src/components/GlossaryCandleSketch.vue  Vẽ nến minh hoạ (SVG) + nhãn, đường, vùng, điểm vào/ra
 src/components/GlossaryRsiPanel.vue     Khung RSI bên dưới hình minh hoạ (mức, vùng, đường phân kỳ, MA)
@@ -254,5 +266,5 @@ src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangeP
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
                               TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
                               TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn),
-                              AiTradeAnalysis (phân tích AI)
+                              AiTradeAnalysis, AiOverallAnalysis, AiMarkdownResult (phân tích AI)
 ```
