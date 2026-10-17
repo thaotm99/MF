@@ -1,4 +1,7 @@
 /** Gọi endpoint phân tích AI của dev server (Claude Code chạy trên máy) */
+/** Một lượt hỏi tiếp trong cùng session Claude Code */
+export interface AiThreadItem { question: string; markdown: string; createdAt: string; costUsd?: number }
+
 export interface AiAnalysis {
   positionId: string
   accountLabel: string
@@ -9,6 +12,9 @@ export interface AiAnalysis {
   costUsd?: number
   durationMs?: number
   turns?: number
+  /** Session Claude Code để hỏi tiếp (--resume) */
+  sessionId?: string
+  thread?: AiThreadItem[]
 }
 
 export interface AiOverallAnalysis {
@@ -22,6 +28,8 @@ export interface AiOverallAnalysis {
   createdAt: string
   costUsd?: number
   durationMs?: number
+  sessionId?: string
+  thread?: AiThreadItem[]
 }
 
 export type AiEvent =

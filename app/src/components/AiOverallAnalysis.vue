@@ -8,6 +8,7 @@ import { useTradeAutoTags } from '../composables/use-trade-auto-tags'
 import { useFiltersStore } from '../stores/filters'
 import { useTradeJournalStore } from '../stores/trade-journal'
 import { buildOverallRows, buildOverallSummary } from '../utils/ai-overall-rows'
+import AiFollowUpThread from './AiFollowUpThread.vue'
 import AiMarkdownResult from './AiMarkdownResult.vue'
 
 /**
@@ -119,6 +120,8 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleString('vi-VN', { dateSty
           <template v-if="saved.botFile"> · đối chiếu {{ saved.botFile }}</template><template v-else> · chưa xác định được file bot</template>
           <template v-if="saved.question"> · trọng tâm: “{{ saved.question }}”</template> · ý kiến tham khảo, AI có thể sai
         </p>
+        <AiFollowUpThread v-if="saved && state !== 'running'" kind="overall" :id="saved.id" :thread="saved.thread ?? []"
+          :has-session="!!saved.sessionId" @updated="(u) => (saved = { ...saved!, ...u })" />
       </div>
     </template>
 

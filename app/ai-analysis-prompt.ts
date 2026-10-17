@@ -86,3 +86,12 @@ export function buildAiOverallPrompt(r: AiOverallRequest, botFile: string | unde
     '## Giả thuyết cần kiểm chứng bằng forward test (định tính, không kèm con số tối ưu)',
   ].join('\n')
 }
+
+/** Câu hỏi tiếp trong session cũ (đã có system prompt + dữ liệu + code bot đã đọc) */
+export function buildAiFollowUpPrompt(question: string): string {
+  return [
+    `Câu hỏi tiếp của chủ bot: ${question}`,
+    '',
+    '(Trả lời tiếp theo đúng nguyên tắc ban đầu: định tính, đối chiếu code, không đề xuất tham số tối ưu từ dữ liệu lịch sử; ghi ticket dạng #123456789. Đọc lại file nếu cần.)',
+  ].join('\n')
+}

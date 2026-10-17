@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { getSavedAnalysis, type AiAnalysis } from '../api/ai-analysis-client'
 import { useAiAnalysisRun } from '../composables/use-ai-analysis-run'
+import AiFollowUpThread from './AiFollowUpThread.vue'
 import AiMarkdownResult from './AiMarkdownResult.vue'
 
 /**
@@ -61,6 +62,8 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleString('vi-VN', { dateSty
       <template v-if="saved.question"> · hỏi: “{{ saved.question }}”</template>
       · ý kiến tham khảo, AI có thể sai
     </p>
+    <AiFollowUpThread v-if="saved && state !== 'running'" kind="trade" :id="saved.positionId" :thread="saved.thread ?? []"
+      :has-session="!!saved.sessionId" @updated="(u) => (saved = { ...saved!, ...u })" />
     <p v-if="!saved && state === 'idle'" class="hint">Bot được xác định theo tên tài khoản (MF_xx → test/…MFxx….mq5). Mỗi lần mất khoảng 10–60 giây và tính vào giới hạn gói Claude của bạn.</p>
   </section>
 </template>

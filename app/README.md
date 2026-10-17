@@ -170,7 +170,7 @@ Trong ô **Nhãn & ghi chú** của lệnh đang chọn trên Chart giá có nú
 - **Định hướng**: AI phân tích **định tính** (vì sao vào / thoát, bot có chạy đúng code không, nghi lỗi ở đâu) và được dặn
   **không** đề xuất tham số / ngưỡng mới từ dữ liệu lịch sử. Câu trả lời chỉ là ý kiến tham khảo, AI có thể sai.
 - **An toàn**: chỉ dùng khi mở dashboard **trực tiếp trên máy**, vì request qua tunnel / proxy bị chặn (403) kể cả khi có mật khẩu.
-  Claude Code chạy với `--restricted`, chỉ có tool đọc (Read / Grep / Glob), không đọc được `.env`, không có MCP, mỗi lúc chỉ chạy 1 lượt, tối đa 5 phút.
+  Claude Code chạy với `--restricted`, chỉ có tool đọc (Read / Grep / Glob), không đọc được `.env`, không có MCP, mỗi lúc chỉ chạy 1 lượt, tối đa 5 phút (tổng thể 10 phút).
 - **Lưu lại**: kết quả lưu ở `app/ai-analyses/<ticket>.json` (không commit), mở lại không cần chạy lại. Bấm **Phân tích lại** để chạy lại, có thể thêm câu hỏi.
 - Mỗi lần mất khoảng 10–60 giây và tính vào giới hạn sử dụng của gói Claude.
 
@@ -181,6 +181,15 @@ và giả thuyết cần kiểm chứng bằng forward test — vẫn định t�
 - Bảng lệnh (mỗi dòng 1 lệnh: dữ liệu lệnh, comment, bối cảnh lúc vào / trước khi đóng, MAE/MFE, nhãn, ghi chú) được ghi ra
   `app/ai-analyses/inputs/<login>-<từ>-<đến>.tsv` để Claude Code tự đọc; kết quả lưu ở `app/ai-analyses/overall/`, có danh sách "Đã phân tích".
 - Bấm `#ticket` trong câu trả lời để mở lệnh đó trên Chart giá. Mất khoảng 1–5 phút (tối đa 10 phút).
+
+**Hỏi tiếp** — dưới mỗi kết quả (1 lệnh hoặc tổng thể) có ô hỏi tiếp (Ctrl + Enter để gửi): câu hỏi chạy trong **cùng session**
+Claude Code (`claude -p --resume <sessionId>`), AI còn nhớ code bot và dữ liệu đã đọc nên trả lời nhanh, không đọc lại từ đầu.
+
+- `sessionId` lưu trong file kết quả (`app/ai-analyses/…json`, trường `sessionId`), hội thoại lưu ở trường `thread` → mở lại trang vẫn thấy.
+- Nội dung session do Claude Code lưu ở `~/.claude/projects/<đường-dẫn-repo>/<sessionId>.jsonl` (hiện trong `claude --resume`).
+  Nếu file này bị xoá thì không hỏi tiếp được — bấm **Phân tích lại** để tạo session mới (hội thoại cũ được thay).
+- Dev server bỏ các biến môi trường session của Claude Code (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`…) khi gọi `claude`,
+  để lượt phân tích không bị ghi lẫn vào session Claude Code đang chạy `npm run dev` (nếu có).
 
 ## Nhật ký lệnh (nhãn & ghi chú)
 
@@ -266,5 +275,5 @@ src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangeP
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
                               TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
                               TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn),
-                              AiTradeAnalysis, AiOverallAnalysis, AiMarkdownResult (phân tích AI)
+                              AiTradeAnalysis, AiOverallAnalysis, AiFollowUpThread, AiMarkdownResult (phân tích AI)
 ```

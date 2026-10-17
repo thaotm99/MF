@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { viaProxyOrRemote } from './dashboard-password-guard'
 import { createClaudeRunner } from './ai-analysis-claude-runner'
-import { buildAiOverallPrompt, buildAiPrompt, type AiAnalyzeRequest, type AiOverallRequest } from './ai-analysis-prompt'
+import { buildAiFollowUpPrompt, buildAiOverallPrompt, buildAiPrompt, type AiAnalyzeRequest, type AiOverallRequest } from './ai-analysis-prompt'
 
 /**
  * Phân tích bằng Claude Code chạy trên máy này (`claude -p`, dùng tài khoản đã đăng nhập, không cần API key).
@@ -15,6 +15,8 @@ import { buildAiOverallPrompt, buildAiPrompt, type AiAnalyzeRequest, type AiOver
  *                                  lưu app/ai-analyses/overall/<id>.json
  * - GET  /__ai-analyze-all/list    danh sách bản phân tích tổng thể đã lưu
  * - GET  /__ai-analyze-all/<id>    bản phân tích tổng thể đã lưu
+ * - POST /__ai-followup            {kind:'trade'|'overall', id, question} → hỏi tiếp trong session cũ (claude --resume),
+ *                                  câu hỏi + trả lời nối vào `thread` của file đã lưu
  *
  * Chỉ nhận request trực tiếp trên máy (chặn qua tunnel/proxy kể cả có mật khẩu), mỗi lúc 1 lượt.
  */
@@ -73,6 +75,13 @@ function isOverallRequest(v: unknown): v is AiOverallRequest {
     && str(r.summary, 20_000) && str(r.rows, 3_000_000) && (r.question === undefined || str(r.question, 2000))
 }
 
+interface FollowUpRequest { kind: 'trade' | 'overall'; id: string; question: string }
+function isFollowUp(v: unknown): v is FollowUpRequest {
+  const r = v as FollowUpRequest
+  return !!r && typeof r === 'object' && (r.kind === 'trade' || r.kind === 'overall') && SAFE_ID.test(String(r.id))
+    && typeof r.question === 'string' && r.question.trim().length > 0 && r.question.length <= 2000
+}
+
 function text(res: ServerResponse, status: number, msg: string) {
   res.statusCode = status
   res.setHeader('content-type', 'text/plain; charset=utf-8')
@@ -119,7 +128,7 @@ export function aiAnalysisDevEndpoint(opts: Options = {}): Plugin {
     if (!body) return
     const botFile = await findBotFile(repoRoot, body.accountLabel)
     runner.run(res, buildAiPrompt(body, botFile), 5 * 60_000, { botFile: botFile ?? null }, async (markdown, meta) => {
-      const saved = { positionId: body.positionId, accountLabel: body.accountLabel, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta }
+      const saved = { positionId: body.positionId, accountLabel: body.accountLabel, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta, thread: [] }
       await fs.mkdir(outDir, { recursive: true })
       await fs.writeFile(path.join(outDir, `${body.positionId}.json`), JSON.stringify(saved, null, 1), 'utf8')
       return saved
@@ -135,11 +144,35 @@ export function aiAnalysisDevEndpoint(opts: Options = {}): Plugin {
     await fs.mkdir(path.join(outDir, 'inputs'), { recursive: true })
     await fs.writeFile(path.join(repoRoot, inputRel), body.rows, 'utf8')
     runner.run(res, buildAiOverallPrompt(body, botFile, inputRel), 10 * 60_000, { botFile: botFile ?? null }, async (markdown, meta) => {
-      const saved = { id: body.id, accountLabel: body.accountLabel, period: body.period, tradeCount: body.tradeCount ?? null, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta }
+      const saved = { id: body.id, accountLabel: body.accountLabel, period: body.period, tradeCount: body.tradeCount ?? null, botFile: botFile ?? null, question: body.question ?? '', markdown, createdAt: new Date().toISOString(), ...meta, thread: [] }
       await fs.mkdir(path.join(outDir, 'overall'), { recursive: true })
       await fs.writeFile(path.join(outDir, 'overall', `${body.id}.json`), JSON.stringify(saved, null, 1), 'utf8')
       return saved
     })
+  }
+
+  const savedFile = (kind: 'trade' | 'overall', id: string) => (kind === 'trade' ? path.join(outDir, `${id}.json`) : path.join(outDir, 'overall', `${id}.json`))
+
+  async function followUp(req: IncomingMessage, res: ServerResponse) {
+    const body = await parse(req, res, 16 * 1024, isFollowUp)
+    if (!body) return
+    const file = savedFile(body.kind, body.id)
+    let saved: Record<string, any>
+    try {
+      saved = JSON.parse(await fs.readFile(file, 'utf8'))
+    } catch {
+      return text(res, 404, 'Chưa có bản phân tích để hỏi tiếp.')
+    }
+    if (typeof saved.sessionId !== 'string') return text(res, 409, 'Bản phân tích này tạo trước khi có "Hỏi tiếp" — bấm "Phân tích lại" rồi hỏi tiếp.')
+    const question = body.question.trim()
+    runner.run(res, buildAiFollowUpPrompt(question), 5 * 60_000, { botFile: saved.botFile ?? null }, async (markdown, meta) => {
+      // Đọc lại file (có thể vừa đổi) rồi nối câu hỏi + trả lời
+      const cur = JSON.parse(await fs.readFile(file, 'utf8'))
+      cur.thread = [...(Array.isArray(cur.thread) ? cur.thread : []), { question, markdown, createdAt: new Date().toISOString(), costUsd: meta.costUsd }]
+      if (meta.sessionId) cur.sessionId = meta.sessionId
+      await fs.writeFile(file, JSON.stringify(cur, null, 1), 'utf8')
+      return cur
+    }, saved.sessionId)
   }
 
   async function listOverall(res: ServerResponse) {
@@ -174,19 +207,21 @@ export function aiAnalysisDevEndpoint(opts: Options = {}): Plugin {
         const url = (req.url ?? '').split('?')[0]
         const trade = url === '/__ai-analyze' || url.startsWith('/__ai-analyze/')
         const all = url === '/__ai-analyze-all' || url.startsWith('/__ai-analyze-all/')
-        if (!trade && !all) return next()
+        const follow = url === '/__ai-followup'
+        if (!trade && !all && !follow) return next()
         res.setHeader('cache-control', 'no-store')
         // Chỉ dùng trên máy này: chặn mọi request qua tunnel / proxy / máy khác
         if (viaProxyOrRemote(req)) return text(res, 403, 'Phân tích AI chỉ dùng được khi mở dashboard trực tiếp trên máy chạy npm run dev.')
 
         if (req.method === 'POST' && url === '/__ai-analyze') return analyzeTrade(req, res)
         if (req.method === 'POST' && url === '/__ai-analyze-all') return analyzeAll(req, res)
+        if (req.method === 'POST' && follow) return followUp(req, res)
         if (req.method === 'GET' && url === '/__ai-analyze-all/list') return listOverall(res)
         if (req.method === 'GET') {
           const prefix = trade ? '/__ai-analyze/' : '/__ai-analyze-all/'
           const id = decodeURIComponent(url.slice(prefix.length))
           if (!SAFE_ID.test(id)) return text(res, 400, '')
-          return sendJsonFile(res, trade ? path.join(outDir, `${id}.json`) : path.join(outDir, 'overall', `${id}.json`))
+          return sendJsonFile(res, savedFile(trade ? 'trade' : 'overall', id))
         }
         text(res, 405, '')
       })
