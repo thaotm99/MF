@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
+import BrowserFileImport from '../components/BrowserFileImport.vue'
 import Mt5ReportsPanel from '../components/Mt5ReportsPanel.vue'
+import { useCandlesStore } from '../stores/candles'
 import { useSettingsStore } from '../stores/settings'
 
 const settings = useSettingsStore()
+const candles = useCandlesStore()
+onMounted(() => candles.state === 'idle' && void candles.list())
 </script>
 
 <template>
@@ -10,6 +15,17 @@ const settings = useSettingsStore()
     <h1>Báo cáo MT5</h1>
 
     <Mt5ReportsPanel />
+
+    <!-- Bản deploy: nạp file nến ngay trên trình duyệt (bản chạy npm run dev đọc app/candles/) -->
+    <section v-if="candles.source === 'browser'" class="card block">
+      <h2>File nến</h2>
+      <p class="muted small">
+        Dùng cho Chart giá, Đánh giá lệnh và nhãn tự động. Xuất bằng script <code>app/mql5/ExportCandlesCsv.mq5</code> trong MT5
+        (hoặc View → Symbols → Bars → Export). Tên file dạng <code>XAUUSDc_M5.csv</code> (mã_khung). Chỉ lưu trong trình duyệt này.
+      </p>
+      <BrowserFileImport accept=".csv" label="Chọn file nến (.csv)" :files="candles.files"
+        :on-import="candles.importFiles" :on-remove="candles.removeFile" />
+    </section>
 
     <section class="card block">
       <h2>Cài đặt</h2>

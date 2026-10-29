@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useDashboardData } from '../composables/use-dashboard-data'
 import DashboardFilters from './DashboardFilters.vue'
+import { useReportsStore } from '../stores/reports'
 
 /** Khung chung của trang phân tích: tiêu đề, thanh lọc, thông báo khi chưa có báo cáo */
 defineProps<{ title: string; description?: string; hideAccount?: boolean; plain?: boolean }>()
 const { hasAccounts, loading } = useDashboardData()
+const reports = useReportsStore()
 </script>
 
 <template>
@@ -16,10 +18,13 @@ const { hasAccounts, loading } = useDashboardData()
 
     <section v-if="!hasAccounts" class="card empty">
       <p v-if="loading">Đang đọc báo cáo…</p>
+      <p v-else-if="reports.source === 'browser'">
+        Chưa có báo cáo nào. Xuất báo cáo HTML từ MT5 (History → Report → HTML) rồi nạp ở trang Báo cáo MT5 — file chỉ lưu trong trình duyệt này.
+      </p>
       <p v-else>
         Chưa có báo cáo nào. Xuất báo cáo HTML từ MT5 (History → Report → HTML) vào thư mục <code>app/reports/</code> rồi tải lại.
       </p>
-      <RouterLink class="btn btn-primary" to="/reports">Hướng dẫn</RouterLink>
+      <RouterLink class="btn btn-primary" to="/reports">{{ reports.source === 'browser' ? 'Nạp báo cáo' : 'Hướng dẫn' }}</RouterLink>
     </section>
 
     <template v-else>

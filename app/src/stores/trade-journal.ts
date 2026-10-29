@@ -22,6 +22,9 @@ export const useTradeJournalStore = defineStore('trade-journal', () => {
   const state = ref<'idle' | 'loading' | 'ok' | 'unavailable'>('idle')
   const saving = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
   let timer: ReturnType<typeof setTimeout> | undefined
+  /** Lưu ở file (dev server) hay localStorage của trình duyệt (bản deploy tĩnh) */
+  const backend = ref<'server' | 'browser'>('server')
+  const LOCAL_KEY = 'mf-trade-journal-v1'
 
   async function load() {
     state.value = 'loading'
@@ -31,13 +34,29 @@ export const useTradeJournalStore = defineStore('trade-journal', () => {
       entries.value = (await res.json()) as Record<string, JournalEntry>
       state.value = 'ok'
     } catch {
-      state.value = 'unavailable'
+      // Không có dev server (bản deploy) → localStorage
+      backend.value = 'browser'
+      try {
+        entries.value = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '{}') as Record<string, JournalEntry>
+        state.value = 'ok'
+      } catch {
+        state.value = 'unavailable'
+      }
     }
   }
   const ensureLoaded = () => (state.value === 'idle' ? load() : Promise.resolve())
 
   async function flush() {
     saving.value = 'saving'
+    if (backend.value === 'browser') {
+      try {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(entries.value))
+        saving.value = 'saved'
+      } catch {
+        saving.value = 'error'
+      }
+      return
+    }
     try {
       const res = await fetch('/__trade-journal', {
         method: 'PUT',
@@ -73,5 +92,5 @@ export const useTradeJournalStore = defineStore('trade-journal', () => {
     return [...PRESET_TAGS, ...[...used].filter((t) => !PRESET_TAGS.includes(t)).sort()]
   })
 
-  return { entries, state, saving, load, ensureLoaded, set, toggleTag, allTags }
+  return { entries, state, backend, saving, load, ensureLoaded, set, toggleTag, allTags }
 })

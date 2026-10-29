@@ -29,6 +29,24 @@ App chỉ đọc được báo cáo khi chạy `npm run dev`.
 Bộ lọc **tài khoản** và **thời gian** dùng chung cho mọi trang và được giữ khi chuyển trang. Mỗi lần chuyển trang,
 app đọc lại thư mục `reports/`.
 
+## Deploy lên Vercel (bản tĩnh)
+
+Bản deploy chỉ là giao diện (file tĩnh trong `dist/`) — **không có dev server**, nên:
+
+| Chức năng | `npm run dev` trên máy | Bản deploy Vercel |
+|---|---|---|
+| Báo cáo MT5 | đọc `app/reports/` | **nạp file .html ở trang Báo cáo MT5** → lưu trong trình duyệt (IndexedDB) |
+| File nến | đọc `app/candles/` | **nạp file .csv ở trang Báo cáo MT5 → File nến** → lưu trong trình duyệt |
+| Nhãn & ghi chú | `app/journal/trade-journal.json` | localStorage của trình duyệt |
+| Phân tích AI | Claude Code trên máy | không có |
+
+Dữ liệu nạp trên bản deploy **chỉ nằm trong trình duyệt đó** (không gửi lên server, không vào repo) — mở bằng máy / trình duyệt khác
+thì nạp lại; xoá dữ liệu trang web (hoặc chế độ ẩn danh) là mất. Không bao giờ commit báo cáo / nến vào repo (repo public).
+
+Cấu hình sẵn ở `app/vercel.json` (Vite, `npm run build`, thư mục `dist`, mọi đường dẫn trả về `index.html` cho router, `noindex`).
+Trên Vercel: **Add New → Project → Import** repo, **Root Directory = `app`**, giữ nguyên Build / Output theo `vercel.json`, Deploy.
+Mỗi lần push nhánh đã chọn làm Production Branch thì Vercel tự build lại.
+
 ## Public ra internet (Cloudflare Tunnel)
 
 1. Cài một lần: `brew install cloudflared`
@@ -197,7 +215,7 @@ Claude Code (`claude -p --resume <sessionId>`), AI còn nhớ code bot và dữ 
 
 - Gắn nhãn (Đúng setup, Sai cấu trúc, Vào sớm/muộn, Thoát sớm/muộn, Tin tức, Khác, hoặc nhãn riêng) và ghi chú cho từng lệnh:
   cột **Nhãn** trong danh sách ở trang Đánh giá lệnh, hoặc ô **Nhãn & ghi chú** khi chọn một lệnh trên Chart giá.
-- Lưu tự động vào `app/journal/trade-journal.json` (theo ticket vị thế MT5, nằm trong `.gitignore`), chỉ khi chạy `npm run dev` trên máy.
+- Lưu tự động vào `app/journal/trade-journal.json` (theo ticket vị thế MT5, nằm trong `.gitignore`) khi chạy `npm run dev`; trên bản deploy lưu ở localStorage của trình duyệt.
 - Trang Đánh giá lệnh có bảng **Theo nhãn của bạn** (thắng/thua theo nhãn) và bộ lọc theo nhãn trong danh sách.
   Lệnh có nhiều nhãn được tính vào mỗi nhãn.
 
@@ -244,7 +262,8 @@ src/api/mt5-entry-comment-parser.ts  Đọc ATR / ER5 từ comment lệnh
 src/api/mt5-candles-csv-parser.ts    Đọc nến CSV (script hoặc Export Bars)
 src/stores/reports.ts         Tải báo cáo, gộp theo tài khoản
 src/stores/settings.ts        Tuỳ chọn múi giờ (localStorage)
-src/stores/trade-journal.ts   Nhãn / ghi chú từng lệnh (lưu qua dev server)
+src/stores/trade-journal.ts   Nhãn / ghi chú từng lệnh (dev server hoặc localStorage)
+src/stores/browser-file-storage.ts  Lưu file báo cáo / nến trong trình duyệt (IndexedDB) cho bản deploy
 src/utils/stats.ts            Tổng hợp số liệu, PnL theo ngày
 src/utils/trading-extremes-stats.ts  Ngày lãi/lỗ lớn nhất, chuỗi thua dài nhất
 src/utils/account-comparison-stats.ts  Chỉ số so sánh tài khoản, max drawdown
@@ -278,5 +297,7 @@ src/components/               SummaryPanel, PnlCalendar, ClosedDeals, DateRangeP
                               TradePriceChart + TradeChartTradeList (tab Chart giá, lightweight-charts),
                               TradeEvaluationTab + SetupCombinationSection + ExcursionSection + TradeEvaluationList (Đánh giá lệnh),
                               TradeJournalEditor, TradeTagChips, TradeTagFilterSelect, AutoTagLegend (nhãn),
-                              AiTradeAnalysis, AiOverallAnalysis, AiFollowUpThread, AiMarkdownResult (phân tích AI)
+                              AiTradeAnalysis, AiOverallAnalysis, AiFollowUpThread, AiMarkdownResult (phân tích AI),
+                              BrowserFileImport (nạp file trên bản deploy)
+vercel.json                   Cấu hình deploy Vercel (Root Directory = app)
 ```

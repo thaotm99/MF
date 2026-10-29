@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { deleteStoredFile, listStoredFiles, readStoredFile, storeFiles } from './browser-file-storage'
 import { computed, ref } from 'vue'
 import { decodeReport, estimateContract, parseMt5Report, type Mt5Position, type Mt5Report } from '../api/mt5-report-parser'
 import type { Deal } from '../api/types'
@@ -46,21 +47,51 @@ function notional(d: Deal, currency: string): number | null {
   return d.instrument ? notionalFrom(d, estimateContract(d.instrument), currency) : null
 }
 
-/** Báo cáo MT5 đặt trong app/reports/, đọc qua dev server. */
+/**
+ * Báo cáo MT5: chạy `npm run dev` → đọc app/reports/ qua dev server;
+ * bản deploy tĩnh (Vercel) → file người dùng nạp trên trình duyệt (IndexedDB, chỉ ở máy này).
+ */
 export const useReportsStore = defineStore('reports', () => {
   const files = ref<ReportFile[]>([])
   const dir = ref('reports')
   const state = ref<'idle' | 'loading' | 'ok' | 'unavailable'>('idle')
+  /** Nguồn dữ liệu: dev server (thư mục app/reports) hay trình duyệt (file đã nạp) */
+  const source = ref<'server' | 'browser'>('server')
+  const parseFile = async (meta: { name: string; size: number; mtime: string }, read: () => Promise<ArrayBuffer>): Promise<ReportFile> => {
+    try {
+      return { ...meta, report: parseMt5Report(decodeReport(await read())) }
+    } catch (e) {
+      return { ...meta, report: null, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+  async function loadFromBrowser() {
+    source.value = 'browser'
+    dir.value = 'trình duyệt'
+    try {
+      const metas = await listStoredFiles('report')
+      files.value = await Promise.all(metas.map((m) => parseFile(m, () => readStoredFile('report', m.name))))
+      state.value = 'ok'
+    } catch {
+      files.value = []
+      state.value = 'unavailable'
+    }
+  }
+  /** Nạp file báo cáo (.html) vào trình duyệt — chỉ dùng khi không có dev server */
+  async function importFiles(list: File[]) {
+    await storeFiles('report', list.filter((f) => /\.html?$/i.test(f.name)))
+    await loadFromBrowser()
+  }
+  async function removeFile(name: string) {
+    await deleteStoredFile('report', name)
+    await loadFromBrowser()
+  }
 
   async function load() {
     state.value = 'loading'
     try {
       const res = await fetch('/__mt5-reports/list', { cache: 'no-store' })
-      if (!(res.headers.get('content-type') ?? '').includes('json')) {
-        state.value = 'unavailable' // không chạy npm run dev
-        files.value = []
-        return
-      }
+      if (!(res.headers.get('content-type') ?? '').includes('json')) return loadFromBrowser() // không chạy npm run dev
+      source.value = 'server'
       const list = (await res.json()) as { dir: string; files: { name: string; size: number; mtime: string }[] }
       dir.value = list.dir
       files.value = await Promise.all(
@@ -76,8 +107,7 @@ export const useReportsStore = defineStore('reports', () => {
       )
       state.value = 'ok'
     } catch {
-      state.value = 'unavailable'
-      files.value = []
+      await loadFromBrowser()
     }
   }
 
@@ -126,5 +156,5 @@ export const useReportsStore = defineStore('reports', () => {
 
   const byId = (id: string) => accounts.value.find((a) => a.id === id)
 
-  return { files, dir, state, accounts, load, byId }
+  return { files, dir, state, source, accounts, load, byId, importFiles, removeFile }
 })

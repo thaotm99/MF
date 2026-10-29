@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { getSavedAnalysis, type AiAnalysis } from '../api/ai-analysis-client'
+import { AI_AVAILABLE, getSavedAnalysis, type AiAnalysis } from '../api/ai-analysis-client'
 import { useAiAnalysisRun } from '../composables/use-ai-analysis-run'
 import AiFollowUpThread from './AiFollowUpThread.vue'
 import AiMarkdownResult from './AiMarkdownResult.vue'
@@ -20,6 +20,7 @@ const { state, error, live, steps, botFile } = run
 watch(() => props.positionId, async (id) => {
   run.stop()
   saved.value = null
+  if (!AI_AVAILABLE) return
   try {
     const s = await getSavedAnalysis(id)
     if (id === props.positionId) saved.value = s
@@ -39,7 +40,10 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleString('vi-VN', { dateSty
 </script>
 
 <template>
-  <section class="ai">
+  <section v-if="!AI_AVAILABLE" class="ai">
+    <p class="hint">Phân tích bằng AI chỉ chạy khi mở dashboard bằng <code>npm run dev</code> trên máy đã cài Claude Code (không có trên bản deploy).</p>
+  </section>
+  <section v-else class="ai">
     <div class="ai-head">
       <h4>Phân tích bằng AI <small>Claude Code trên máy này · đọc code bot + dữ liệu lệnh</small></h4>
       <div class="actions">

@@ -1,4 +1,7 @@
 /** Gọi endpoint phân tích AI của dev server (Claude Code chạy trên máy) */
+/** Phân tích AI cần dev server + Claude Code trên máy → không có trên bản deploy tĩnh (Vercel) */
+export const AI_AVAILABLE = import.meta.env.DEV
+
 /** Một lượt hỏi tiếp trong cùng session Claude Code */
 export interface AiThreadItem { question: string; markdown: string; createdAt: string; costUsd?: number }
 

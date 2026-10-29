@@ -342,7 +342,11 @@ watch(() => [props.from, props.to], fitToRange)
       </span>
     </div>
 
-    <p v-if="candles.state === 'unavailable'" class="alert">Chỉ đọc được file nến khi chạy <code>npm run dev</code>.</p>
+    <p v-if="candles.state === 'unavailable'" class="alert">Trình duyệt không cho lưu dữ liệu (IndexedDB bị tắt) — không đọc được file nến.</p>
+    <p v-else-if="candles.state === 'ok' && !candles.files.length && candles.source === 'browser'" class="alert">
+      Chưa có file nến. Nạp file CSV ở trang <RouterLink to="/reports">Báo cáo MT5 → File nến</RouterLink>
+      (xuất bằng script <code>app/mql5/ExportCandlesCsv.mq5</code> trong MT5).
+    </p>
     <p v-else-if="candles.state === 'ok' && !candles.files.length" class="alert">
       Chưa có file nến trong <code>app/candles/</code>. Chạy script <code>app/mql5/ExportCandlesCsv.mq5</code> trong MT5
       (hoặc View → Symbols → Bars → Export) rồi copy file CSV vào thư mục này và bấm "Tải lại nến".

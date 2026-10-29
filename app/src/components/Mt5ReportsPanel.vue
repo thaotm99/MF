@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useReportsStore } from '../stores/reports'
 import { int, money } from '../utils/format'
+import BrowserFileImport from './BrowserFileImport.vue'
 
 const reports = useReportsStore()
 
@@ -16,19 +17,26 @@ const tradeCount = (id: string) =>
   <section class="card block">
     <div class="block-head">
       <h2>Báo cáo MT5 <span class="count">{{ reports.accounts.length }}</span></h2>
-      <button class="btn" :disabled="reports.state === 'loading'" @click="reports.load()">
+      <button v-if="reports.source === 'server'" class="btn" :disabled="reports.state === 'loading'" @click="reports.load()">
         {{ reports.state === 'loading' ? 'Đang đọc…' : 'Tải lại báo cáo' }}
       </button>
     </div>
 
-    <p class="muted small">
+    <p v-if="reports.source === 'browser'" class="muted small">
+      Trong MT5: <b>Toolbox → History</b> → chuột phải → <b>Report → HTML</b> (giao diện MT5 bằng tiếng Anh), rồi chọn file bên dưới.
+      File chỉ lưu trong <b>trình duyệt này</b> (không gửi lên server); mở trên máy / trình duyệt khác thì nạp lại.
+      Nhiều file cùng một tài khoản sẽ được gộp (deal trùng chỉ tính một lần); nạp file cùng tên sẽ thay file cũ.
+    </p>
+    <BrowserFileImport v-if="reports.source === 'browser'" accept=".html,.htm" label="Chọn file báo cáo (.html)"
+      :files="reports.files" :on-import="reports.importFiles" :on-remove="reports.removeFile" />
+    <p v-else class="muted small">
       Trong MT5: <b>Toolbox → History</b> → chuột phải → <b>Report → HTML</b> (giao diện MT5 bằng tiếng Anh),
       rồi lưu file vào thư mục <code>app/{{ reports.dir }}/</code> và bấm "Tải lại báo cáo". Nhiều file cùng một tài
       khoản sẽ được gộp (deal trùng chỉ tính một lần). Thư mục này nằm trong <code>.gitignore</code>.
     </p>
 
     <p v-if="reports.state === 'unavailable'" class="alert">
-      Chỉ đọc được báo cáo khi chạy <code>npm run dev</code>.
+      Trình duyệt không cho lưu dữ liệu (IndexedDB bị tắt, ví dụ chế độ ẩn danh) — không nạp được báo cáo.
     </p>
 
     <div v-if="reports.accounts.length" class="table-wrap">
@@ -61,7 +69,7 @@ const tradeCount = (id: string) =>
     <p v-for="f in reports.files.filter((x) => x.error)" :key="f.name" class="alert error">
       <b>{{ f.name }}:</b> {{ f.error }}
     </p>
-    <p v-if="reports.state === 'ok' && !reports.files.length" class="empty">
+    <p v-if="reports.state === 'ok' && !reports.files.length && reports.source === 'server'" class="empty">
       Chưa có file trong <code>app/{{ reports.dir }}/</code>.
     </p>
   </section>

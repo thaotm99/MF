@@ -150,7 +150,7 @@ const exitGroups = computed(() => {
     </div>
 
     <p v-if="candles.state === 'ok' && !candles.files.length" class="alert">
-      Cần file nến trong <code>app/candles/</code> (xem trang Chart giá) để đánh giá lệnh.
+      Cần file nến để đánh giá lệnh: thư mục <code>app/candles/</code> khi chạy <code>npm run dev</code>, hoặc nạp ở trang <RouterLink to="/reports">Báo cáo MT5 → File nến</RouterLink> trên bản deploy.
     </p>
     <p v-if="error" class="alert error">Không đọc được nến: {{ error }}</p>
 
